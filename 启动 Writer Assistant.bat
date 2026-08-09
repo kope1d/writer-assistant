@@ -3,6 +3,13 @@ setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
 
+rem Electron 桌面客户端优先：无需本地 Python 探测
+if exist "%~dp0desktop\node_modules\electron\dist\electron.exe" (
+  start "" "%~dp0desktop\node_modules\electron\dist\electron.exe" "%~dp0desktop"
+  exit /b 0
+)
+
+rem 回退：内置桌面窗口（Python 探测全程静默）
 set "WA_PYTHON="
 set "WA_PY_VERSION="
 
@@ -48,10 +55,6 @@ if not errorlevel 1 (
 exit /b 0
 
 :launch
-if exist "%~dp0.venv\Scripts\python.exe" if exist "%~dp0desktop\node_modules\electron\dist\electron.exe" (
-  start "" "%~dp0desktop\node_modules\electron\dist\electron.exe" "%~dp0desktop"
-  exit /b 0
-)
 if "%WA_PYTHON%"=="py" (
   if exist "%~dp0tools\desktop_launcher.py" (
     py %WA_PY_VERSION% -u "%~dp0tools\desktop_launcher.py" --desktop %*
