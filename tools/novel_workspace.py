@@ -16,6 +16,7 @@ import yaml
 
 from tools.character_state_index import strip_character_state_annotations
 from tools.writing_targets import normalize_writing_targets
+from tools.utils import atomic_write_text
 
 CHAPTER_FILE_RE = re.compile(r"^ch_(\d+)\.md$")
 CHAPTER_HEADING_RE = re.compile(
@@ -122,7 +123,7 @@ def save_creative_focus(
         must_avoid=_clean_items(must_avoid),
         notes=_clean_items(notes),
     )
-    path.write_text(render_creative_focus(focus), encoding="utf-8")
+    atomic_write_text(path, render_creative_focus(focus))
     return path
 
 
@@ -222,7 +223,7 @@ def import_manuscript(
         if path.exists() and not force:
             raise FileExistsError(f"章节已存在: {path}")
         normalized = f"# {title.strip()}\n\n{content.strip()}\n"
-        path.write_text(normalized, encoding="utf-8")
+        atomic_write_text(path, normalized)
         imported.append(
             ChapterRecord(
                 chapter_id=chapter_id,
@@ -390,8 +391,9 @@ def update_project_progress(
     data["current_chapter"] = current_chapter
     if current_arc:
         data["current_arc"] = current_arc
-    config_path.write_text(
-        yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    atomic_write_text(
+        config_path,
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
     )
 
 

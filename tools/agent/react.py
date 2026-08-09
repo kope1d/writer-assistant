@@ -1081,8 +1081,15 @@ class ReActAgent:
             return f"{name}: {str(result)[:1200]}"
         if name == "stage_outline_edits":
             revision = str(payload.get("draft_revision") or "")
+            # batch_count 可能缺失或非数字（如 "abc"）；此函数在工具失败路径中运行，
+            # 二次异常会杀掉整个 run loop，必须安全降级。
+            raw_batch = payload.get("batch_count")
+            try:
+                batch_no = int(raw_batch) if raw_batch not in (None, "") else 1
+            except (TypeError, ValueError):
+                batch_no = 1
             return (
-                f"{name}: 已暂存至第 {int(payload.get('batch_count') or 1)} 批，"
+                f"{name}: 已暂存至第 {batch_no} 批，"
                 f"draft_revision={revision[:12] or '未知'}，"
                 f"final_batch={str(bool(payload.get('final_batch'))).lower()}；"
                 "正式大纲尚未写入。"

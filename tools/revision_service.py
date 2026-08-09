@@ -287,15 +287,18 @@ class RevisionService:
                         code="REVISION_RESULT_TOO_LARGE",
                     )
                 accepted_hunks = [str(item) for item in (selected_hunk_ids or [])]
-                available_hunks = {
-                    str(item.get("id"))
-                    for item in self._diff(
-                        str(selection.get("original_text") or ""),
-                        str(proposal.get("replacement_text") or ""),
-                    )["hunks"]
-                }
+                original_text = str(selection.get("original_text") or "")
+                diff = self._diff(original_text, str(proposal.get("replacement_text") or ""))
+                available_hunks = {str(item.get("id")) for item in diff["hunks"]}
                 if any(item not in available_hunks for item in accepted_hunks):
                     raise RevisionError("差异块选择已失效", code="INVALID_INPUT")
+                if accepted_hunks:
+                    # 只应用被选中的差异块；未选中的块保留原文。
+                    replacement = self._apply_partial_hunks(
+                        original_text,
+                        str(proposal.get("replacement_text") or ""),
+                        accepted_hunks,
+                    )
                 proposal = self.store.update_status(
                     proposal_id,
                     "proposed",
@@ -493,7 +496,7 @@ class RevisionService:
     def _chapter_path(self, chapter_id: str) -> Path:
         if not re.fullmatch(r"ch_\d+", str(chapter_id or "")):
             raise RevisionError("章节 ID 必须形如 ch_001", code="INVALID_INPUT")
-        matches = list((self.novel_root / "data" / "manuscript").glob(f"**/{chapter_id}.md"))
+        matches = list((self.novel_root / "data" / "manuscript").glob(f"arc_*/{chapter_id}.md"))
         if not matches:
             raise RevisionError("章节正文不存在", code="DOCUMENT_NOT_FOUND")
         if len(matches) > 1:
@@ -696,6 +699,32 @@ class RevisionService:
                 "delta_units": len(replacement) - len(original),
             },
         }
+
+    @staticmethod
+    def _apply_partial_hunks(
+        original: str, replacement: str, selected_ids: list[str]
+    ) -> str:
+        """在原文上只应用被选中的差异块，未选中的块保留原文。
+
+        与 ``_diff`` 使用同一 SequenceMatcher 分块逻辑，保证 hunk id 对齐。
+        """
+        before = original.splitlines(keepends=True)
+        after = replacement.splitlines(keepends=True)
+        matcher = difflib.SequenceMatcher(a=before, b=after)
+        selected = set(selected_ids)
+        parts: list[str] = []
+        hunk_index = 0
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                parts.append("".join(before[i1:i2]))
+                continue
+            hunk_id = f"hunk_{hunk_index}"
+            hunk_index += 1
+            if hunk_id in selected:
+                parts.append("".join(after[j1:j2]))
+            else:
+                parts.append("".join(before[i1:i2]))
+        return "".join(parts)
 
     @staticmethod
     def _string_list(value: Any) -> list[str]:

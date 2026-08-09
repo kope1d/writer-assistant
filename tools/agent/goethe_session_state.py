@@ -370,7 +370,7 @@ class GoetheSessionStateStore:
         if not mapping:
             return {}
 
-        items = list(mapping.items())[:key_limit]
+        items = list(mapping.items())[-key_limit:]
         compacted: dict[str, Any] = {}
         for key, value in items:
             compacted[self._normalize_mapping_key(key, compacted)] = self._compact_value(
@@ -382,14 +382,14 @@ class GoetheSessionStateStore:
         if isinstance(value, str):
             return self._truncate_text(value, value_limit, keep_tail=False)
         if isinstance(value, list):
-            return [self._compact_value(item, value_limit) for item in value[:8]]
+            return [self._compact_value(item, value_limit) for item in value[-8:]]
         if isinstance(value, dict):
             return self._compact_mapping(value, value_limit, MAX_WORKING_MEMORY_KEYS)
         return value
 
     def _compact_string_list(self, items: list[Any], value_limit: int) -> list[str]:
         compacted: list[str] = []
-        for item in items[:MAX_WORKING_MEMORY_KEYS]:
+        for item in items[-MAX_WORKING_MEMORY_KEYS:]:
             text = self._stringify_scalar(item)
             if text:
                 compacted.append(self._truncate_text(text, value_limit, keep_tail=False))
@@ -430,7 +430,7 @@ class GoetheSessionStateStore:
         state.compression_markers = self._coerce_marker_list(state.compression_markers)
         if len(state.working_memory) > MAX_WORKING_MEMORY_KEYS:
             state.working_memory = dict(
-                list(state.working_memory.items())[:MAX_WORKING_MEMORY_KEYS]
+                list(state.working_memory.items())[-MAX_WORKING_MEMORY_KEYS:]
             )
 
     def _to_dict(self, state: GoetheSessionState) -> dict[str, Any]:

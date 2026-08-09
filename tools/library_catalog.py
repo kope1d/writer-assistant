@@ -17,6 +17,20 @@ import yaml
 
 from tools.frontmatter import parse_toml_front_matter
 
+
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 LIBRARY_SCOPES = ("core", "characters", "settings")
 CANONICAL_SEARCH_SCOPES = {
     "all",
@@ -237,7 +251,7 @@ def query_library(
             str(item["title"]).casefold(),
         )
     )
-    safe_limit = max(1, min(int(limit or 80), 200))
+    safe_limit = max(1, min(_safe_int(limit, 80), 200))
     return {
         "scope": normalized_scope,
         "scope_label": SCOPE_LABELS[normalized_scope],

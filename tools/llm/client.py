@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from collections import OrderedDict
 from collections.abc import Callable
@@ -34,6 +35,25 @@ def _api_format(value: Any) -> APIFormat:
     if normalized not in {"chat", "responses"}:
         normalized = "chat"
     return cast(APIFormat, normalized)
+
+
+def _safe_int(value: Any, *, default: int) -> int:
+    # 注意：0 是合法值（如 temperature=0、max_tokens=0），不能当空值回退。
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any, *, default: float) -> float:
+    if value in (None, ""):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _value(value: Any, key: str, default: Any = None) -> Any:
@@ -89,7 +109,9 @@ def _plain_usage(usage: Any) -> dict[str, Any]:
     if "completion_tokens" not in converted and completion:
         converted["completion_tokens"] = completion
     if "total_tokens" not in converted and (prompt or completion):
-        converted["total_tokens"] = int(prompt or 0) + int(completion or 0)
+        converted["total_tokens"] = _safe_int(
+            prompt, default=0
+        ) + _safe_int(completion, default=0)
     return converted
 
 
@@ -187,7 +209,10 @@ class LLMConfig:
 
     @classmethod
     def from_env(cls) -> LLMConfig:
-        """Build a configuration from the active profile or legacy environment."""
+        """Build a configuration from the active profile or legacy environment.
+
+        环境变量解析失败时回退默认值，避免一个写错的变量让整个 CLI 崩溃。
+        """
         from tools.model_profiles import active_model_profile
 
         profile = active_model_profile()
@@ -197,28 +222,28 @@ class LLMConfig:
                 api_key=profile["api_key"],
                 base_url=profile["base_url"],
                 model=profile["model"],
-                temperature=float(
-                    0.7 if profile.get("temperature") in {None, ""} else profile["temperature"]
+                temperature=_safe_float(
+                    profile.get("temperature"), default=0.7
                 ),
-                max_tokens=int(profile.get("max_output_tokens") or 24000),
-                context_tokens=int(profile.get("context_tokens") or 64000),
+                max_tokens=_safe_int(profile.get("max_output_tokens"), default=24000),
+                context_tokens=_safe_int(profile.get("context_tokens"), default=64000),
                 stream=os.getenv("LLM_STREAM", "true").lower() == "true",
                 api_format=_api_format(profile.get("api_format")),
-                timeout_seconds=float(profile.get("timeout_seconds") or 120),
-                max_retries=int(os.getenv("LLM_MAX_RETRIES", "3")),
+                timeout_seconds=_safe_float(profile.get("timeout_seconds"), default=120),
+                max_retries=_safe_int(os.getenv("LLM_MAX_RETRIES"), default=3),
             )
         return cls(
             provider=_provider_name(os.getenv("LLM_PROVIDER", "openai")),
             api_key=os.getenv("LLM_API_KEY", ""),
             base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
             model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-            temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
-            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "24000")),
-            context_tokens=int(os.getenv("OPENWRITE_CONTEXT_TOKENS", "64000")),
+            temperature=_safe_float(os.getenv("LLM_TEMPERATURE"), default=0.7),
+            max_tokens=_safe_int(os.getenv("LLM_MAX_TOKENS"), default=24000),
+            context_tokens=_safe_int(os.getenv("OPENWRITE_CONTEXT_TOKENS"), default=64000),
             stream=os.getenv("LLM_STREAM", "true").lower() == "true",
             api_format=_api_format(os.getenv("LLM_API_FORMAT", "chat")),
-            timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "120")),
-            max_retries=int(os.getenv("LLM_MAX_RETRIES", "3")),
+            timeout_seconds=_safe_float(os.getenv("LLM_TIMEOUT_SECONDS"), default=120),
+            max_retries=_safe_int(os.getenv("LLM_MAX_RETRIES"), default=3),
         )
 
     @staticmethod
@@ -305,6 +330,7 @@ class LLMClient:
             "provider": self.config.provider,
             "base_url": self.config.base_url,
             "api_format": self.config.api_format,
+            "extra": self.config.extra,
             "temperature": temperature,
             "max_tokens": max_tokens,
             "messages": [
@@ -938,7 +964,11 @@ class LLMClient:
                 )
         except Exception as exc:
             partial = "".join(chunks)
-            if len(partial) > 100:
+            tolerate = (
+                os.environ.get("OPENWRITE_STREAM_PARTIAL_OK", "").strip().lower()
+                in {"1", "true", "yes"}
+            )
+            if tolerate and len(partial) > 100:
                 logger.warning("Stream interrupted: %s; returning partial content", exc)
                 return LLMResponse(
                     content=partial,
@@ -948,6 +978,7 @@ class LLMClient:
                     finish_reason="incomplete",
                     reasoning="".join(reasoning),
                 )
+            # 默认不返回部分内容：写作流水线会把不完整草稿当作完整章节提交。
             raise self._wrap_error(exc) from exc
 
         return LLMResponse(
@@ -984,22 +1015,24 @@ class LLMClient:
             return _ensure_exception(
                 LLMTimeoutError("模型服务请求超时，请稍后重试", error_msg)
             )
-        if "400" in error_msg:
+        # 状态码必须作为独立 token 匹配（(?<!\d)...(?!\d)），避免把
+        # “token 数 40000 超限”这类消息中的 “400” 误判为 HTTP 400。
+        if re.search(r"(?<!\d)400(?!\d)", error_msg):
             return _ensure_exception(
                 InvalidRequestError(
                     "API 返回 400（请求参数错误），请检查模型名称、接口格式与模型能力",
                     error_msg,
                 )
             )
-        if "401" in error_msg or "api_key" in lowered:
+        if re.search(r"(?<!\d)401(?!\d)", error_msg) or "api_key" in lowered:
             return _ensure_exception(
                 AuthenticationError("API 返回 401（未授权），请检查 API Key", error_msg)
             )
-        if "403" in error_msg or "forbidden" in lowered:
+        if re.search(r"(?<!\d)403(?!\d)", error_msg) or "forbidden" in lowered:
             return _ensure_exception(
                 AuthenticationError("API 返回 403（请求被拒绝）", error_msg)
             )
-        if "429" in error_msg or "rate_limit" in lowered:
+        if re.search(r"(?<!\d)429(?!\d)", error_msg) or "rate_limit" in lowered:
             return _ensure_exception(
                 RateLimitError("API 返回 429（请求过多），请稍后重试", error_msg)
             )

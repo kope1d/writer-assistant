@@ -22,6 +22,20 @@ from ..truth_manager import TruthFilesManager
 from ..agent_policy import get_default_agent_specs
 
 
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+
 @dataclass
 class MultiAgentResult:
     packet: ChapterAssemblyPacket
@@ -86,7 +100,7 @@ class MultiAgentDirector:
         )
 
         chapter_number = self._parse_chapter_index(chapter_id)
-        effective_target = int(writing_context.get("target_words") or 6000)
+        effective_target = _safe_int(writing_context.get("target_words"), 6000)
         self._assert_permission("writer", "manuscript:draft")
         draft = await self.writer.write_chapter(
             context=writing_context,

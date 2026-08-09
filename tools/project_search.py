@@ -36,9 +36,26 @@ from tools.library_catalog import (
     scope_for_path,
 )
 
+
+def _safe_float(value, default=0.0):
+    """宽容转换浮点数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 MAX_INDEXED_BYTES = 2 * 1024 * 1024
 MAX_QUERY_CHARS = 200
 LIGHTRAG_MODES = {"local", "global", "hybrid", "naive", "mix"}
+
+# LLMConfig.from_env() 未配置 LLM_BASE_URL 时回填的官方默认端点。语义检索
+# 校验"端点是否显式配置"时必须识别它：用户只填 key 而未配端点（或测试
+# 环境）时，打官方端点在国内网络即黑洞挂起，应快速失败走精确文本降级。
+_OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
 # Bump whenever the indexed representation changes. The version participates
 # in the LightRAG workspace key, forcing a clean rebuild for existing projects.
 MANIFEST_VERSION = 7
@@ -161,7 +178,7 @@ class LightRAGConfiguration:
                 base_url=str(search_profile.get("base_url") or ""),
                 model=str(search_profile.get("model") or ""),
                 api_format=search_profile.get("api_format") or "chat",
-                timeout_seconds=float(search_profile.get("timeout_seconds") or 120),
+                timeout_seconds=_safe_float(search_profile.get("timeout_seconds"), 120),
             )
         explicit_query_mode = os.environ.get("OPENWRITE_LIGHTRAG_MODE", "").strip().lower()
         profile_search_mode = str(active.get("search_mode") or "vector").strip().lower()
@@ -173,6 +190,23 @@ class LightRAGConfiguration:
         requires_chat_model = query_mode != "naive"
         if requires_chat_model and not llm.api_key.strip():
             raise SearchConfigurationError("LightRAG 需要已配置的模型 API Key")
+        # llm.base_url 是否显式配置：LLMConfig.from_env() 在纯环境变量路径下
+        # 会把官方 OpenAI 端点默认回填，无法用"非空"判断。必须回到配置来源
+        # 确认：search 档案 → 主档案 → LLM_BASE_URL 环境变量，三者皆无即未
+        # 显式配置——此时打官方端点就是配置不完整，应快速失败走降级，而
+        # 不是发起真实网络请求在不可达/错配的端点上无限等待。
+        if search_profile:
+            llm_base_explicit = bool(str(search_profile.get("base_url") or "").strip())
+        else:
+            active_profile = active_model_profile()
+            if active_profile:
+                llm_base_explicit = bool(str(active_profile.get("base_url") or "").strip())
+            else:
+                llm_base_explicit = bool(os.environ.get("LLM_BASE_URL", "").strip())
+        if requires_chat_model and not llm_base_explicit:
+            raise SearchConfigurationError(
+                "LightRAG 需要已配置的模型 Base URL（语义检索与写作共用模型配置）"
+            )
         if requires_chat_model and llm.api_format == "responses":
             raise SearchConfigurationError(
                 "LightRAG 搜索需要 Chat Completions 兼容的模型路由"
@@ -210,6 +244,17 @@ class LightRAGConfiguration:
             raise SearchConfigurationError(
                 "Anthropic 不提供 embedding；请在模型档案中配置独立的 "
                 "Embedding Base URL 和 API Key"
+            )
+        if embedding_provider == "openai" and not (
+            bool(explicit_embedding_base or profile_embedding_base) or llm_base_explicit
+        ):
+            # 云 embedding 端点必须是显式配置（独立 Embedding 端点，或
+            # 显式配置的模型端点），否则 fallback 到官方默认端点即配置
+            # 不完整——快速失败走精确文本降级（离线/未配置场景），而不
+            # 是向不可达端点发起真实请求。
+            raise SearchConfigurationError(
+                "云 Embedding 需要已配置的 Base URL；请配置独立 Embedding "
+                "端点，或改用本地 FastEmbed"
             )
         if embedding_provider == "openai" and "deepseek.com" in embedding_base_url.casefold():
             raise SearchConfigurationError(
@@ -328,7 +373,26 @@ class LightRAGSearchBackend:
     def refresh(self, documents: list[IndexedDocument]) -> BackendSearchResult:
         return _run_async(lambda: self._refresh(documents))
 
+    def _search_timeout(self) -> float:
+        # 语义检索是次要功能（失败会降级为精确文本搜索）：embedding 端点
+        # 不可达时 LightRAG 内部请求会无限等待（AsyncOpenAI 超时可达 120s
+        # 且 LightRAG 可能重试），必须由总超时兜底，超时即抛错走降级路径。
+        # 上限 45 秒：一次语义检索超过该时长本就说明端点不可用。
+        return min(max(1, int(self.configuration.timeout_seconds)), 45)
+
     async def _search(
+        self,
+        documents: list[IndexedDocument],
+        query: str,
+        *,
+        limit: int,
+    ) -> BackendSearchResult:
+        return await asyncio.wait_for(
+            self._search_impl(documents, query, limit=limit),
+            timeout=self._search_timeout(),
+        )
+
+    async def _search_impl(
         self,
         documents: list[IndexedDocument],
         query: str,
@@ -365,6 +429,14 @@ class LightRAGSearchBackend:
                     await rag.finalize_storages()
 
     async def _refresh(self, documents: list[IndexedDocument]) -> BackendSearchResult:
+        return await asyncio.wait_for(
+            self._refresh_impl(documents),
+            timeout=self._search_timeout(),
+        )
+
+    async def _refresh_impl(
+        self, documents: list[IndexedDocument]
+    ) -> BackendSearchResult:
         with _IndexUpdateLock(self.lock_path):
             rag = self._create_rag()
             initialized = False
@@ -1381,12 +1453,14 @@ def _bounded_env_int(
     return parsed
 
 
-def _run_async(factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
+# 语义检索的硬性总超时（秒）。内层 wait_for 最多等 45s 并取消任务，但
+# Windows 上 asyncio.run 收尾（_cancel_all_tasks）会因未关闭的传输句柄
+# 无限挂起——主线程绝不能跟着无限等：到点即放弃（守护线程最终自行结束，
+# 期间索引锁会让后续检索快速走 SearchIndexBusyError），调用方走降级路径。
+_SEARCH_HARD_TIMEOUT_SECONDS = 60
 
+
+def _run_async(factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
     result: list[T] = []
     errors: list[BaseException] = []
 
@@ -1398,7 +1472,11 @@ def _run_async(factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
 
     thread = threading.Thread(target=runner, name="openwrite-lightrag", daemon=True)
     thread.start()
-    thread.join()
+    thread.join(timeout=_SEARCH_HARD_TIMEOUT_SECONDS)
+    if thread.is_alive():
+        raise SearchBackendError(
+            f"LightRAG 检索在 {_SEARCH_HARD_TIMEOUT_SECONDS}s 内未完成，已放弃等待"
+        )
     if errors:
         raise errors[0]
     return result[0]

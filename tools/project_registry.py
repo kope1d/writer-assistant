@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from tools.utils import atomic_write_text
 
 REGISTRY_LIMIT = 12
 
@@ -72,9 +73,9 @@ def write_content_project_metadata(project_root: Path) -> Path:
             "debounce_minutes": 15,
         },
     }
-    path.write_text(
+    atomic_write_text(
+        path,
         yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
     )
     return path
 
@@ -172,7 +173,7 @@ class ProjectRegistry:
     def _save(self, records: list[RecentProject]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"schema_version": 1, "projects": [item.to_dict() for item in records]}
-        self.path.write_text(
+        atomic_write_text(
+            self.path,
             yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
-            encoding="utf-8",
         )

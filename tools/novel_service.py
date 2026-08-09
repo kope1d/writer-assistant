@@ -8,6 +8,7 @@ input normalization, canonical packet assembly and result semantics live here.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
@@ -16,6 +17,23 @@ from threading import Lock
 from typing import Any, cast
 
 import yaml
+from tools.utils import atomic_write_text
+
+
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+logger = logging.getLogger(__name__)
 
 
 class NovelServiceError(RuntimeError):
@@ -140,7 +158,7 @@ class NovelApplicationService:
 
         path: Path = current_focus_path(self.project_root, self.novel_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render_creative_focus(CreativeFocus()), encoding="utf-8")
+        atomic_write_text(path, render_creative_focus(CreativeFocus()))
         return path
 
     def import_book(
@@ -169,6 +187,10 @@ class NovelApplicationService:
             raise NovelServiceError(str(exc), code="CONFLICT") from exc
         except (OSError, ValueError) as exc:
             raise NovelServiceError(str(exc), code="INVALID_INPUT") from exc
+        if not imported:
+            raise NovelServiceError(
+                "导入的稿件没有解析出任何章节", code="INVALID_INPUT"
+            )
         next_number = self._chapter_number(imported[-1].chapter_id) + 1
         next_chapter = f"ch_{next_number:03d}"
         update_project_progress(
@@ -309,7 +331,7 @@ class NovelApplicationService:
         if path.exists():
             raise NovelServiceError("同名文档已存在", code="CONFLICT")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        atomic_write_text(path, content)
         return path
 
     def context_preview(self, chapter_id: str = "next") -> dict[str, Any]:
@@ -322,7 +344,7 @@ class NovelApplicationService:
         )
         return {
             "chapter_id": target,
-            "target_words": int(packet.get("target_words") or 0),
+            "target_words": _safe_int(packet.get("target_words"), 0),
             "characters": list((packet.get("character_documents") or {}).keys()),
             "markdown": str(packet.get("outline") or ""),
             "character_states": generation.character_states,
@@ -383,7 +405,11 @@ class NovelApplicationService:
         args.setdefault("context_packet", self.assemble_packet(chapter_id))
         args["guidance"] = str(args.get("guidance") or "").strip()
         args["target_words"] = self._positive_int(args.get("target_words"))
-        args["temperature"] = float(args.get("temperature") or 0.7)
+        args["temperature"] = self._safe_float(args.get("temperature"))
+        # style_id 归一化收敛在 service 层：Studio 入口显式传、agent 工具入口
+        # 透传原样，两者必须产出同一份 payload（管线内 fallback 到当前风格
+        # 或 novel_id，空串不影响该语义）。
+        args["style_id"] = str(args.get("style_id") or "").strip()
         executor = self._writer_executor or self._default_writer_executor
         if not self._task_lock.acquire(blocking=False):
             raise NovelServiceError("已有写作或审稿任务正在运行", code="PROJECT_BUSY")
@@ -802,6 +828,13 @@ class NovelApplicationService:
         return parsed if parsed > 0 else 0
 
     @staticmethod
+    def _safe_float(value: Any, default: float = 0.7) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
     def _chapter_number(chapter_id: str) -> int:
         match = re.search(r"(\d+)", chapter_id)
         return int(match.group(1)) if match else 0
@@ -835,14 +868,28 @@ class NovelApplicationService:
     ) -> dict[str, Any]:
         from tools.source_pack import SourcePackService
 
-        config = yaml.safe_load((root / "novel_config.yaml").read_text(encoding="utf-8")) or {}
+        config_path = root / "novel_config.yaml"
+        if config_path.exists():
+            try:
+                config = yaml.safe_load(
+                    config_path.read_text(encoding="utf-8")
+                ) or {}
+            except (OSError, ValueError) as exc:
+                logger.warning(
+                    "读取 novel_config.yaml 失败，按空配置处理: %s: %s",
+                    type(exc).__name__,
+                    exc,
+                )
+                config = {}
+        else:
+            config = {}
         result: dict[str, Any] = SourcePackService(
             root, str(config.get("novel_id") or "")
         ).extract(
             str(args["source_id"]),
             Path(str(args["source_file"])),
             focus=str(args.get("focus") or "style"),
-            chunk_size=int(args.get("chunk_size") or 30000),
+            chunk_size=_safe_int(args.get("chunk_size"), 30000),
         )
         return result
 

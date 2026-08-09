@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import json
+from tools.utils import atomic_write_text
 
 
 class FileOps:
@@ -18,8 +19,13 @@ class FileOps:
     def _resolve_path(self, path: str) -> Path:
         """解析并验证路径（防止路径穿越）"""
         full_path = (self.data_dir / path).resolve()
-        if not str(full_path).startswith(str(self.data_dir)):
-            raise ValueError(f"Path traversal detected: {path}")
+        safe_root = self.data_dir.resolve()
+        # 用 relative_to 做包含判断，避免字符串前缀匹配被
+        # /safe/project_evil 这类兄弟路径绕过。
+        try:
+            full_path.relative_to(safe_root)
+        except ValueError:
+            raise ValueError(f"Path traversal detected: {path}") from None
         return full_path
 
     def read_file(self, path: str) -> Dict[str, Any]:
@@ -39,7 +45,7 @@ class FileOps:
         try:
             full_path = self._resolve_path(path)
             full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_text(content, encoding="utf-8")
+            atomic_write_text(full_path, content)
             return {"success": True, "result": str(full_path)}
         except Exception as e:
             return {"success": False, "error": str(e)}

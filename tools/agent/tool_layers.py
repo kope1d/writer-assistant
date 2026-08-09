@@ -69,11 +69,19 @@ def build_dante_tool_layers(project_root: Path) -> dict[str, object]:
     adapter = DanteActionAdapter(orchestrator)
     action_tool_executors: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         "summarize_ideation": lambda args: adapter.summarize_ideation(),
-        "confirm_ideation_summary": lambda args: adapter.confirm_ideation_summary(
-            _read_text_arg(args, "text", "confirmation", default="这个汇总可以")
+        "confirm_ideation_summary": lambda args: (
+            adapter.confirm_ideation_summary(
+                _read_text_arg(args, "text", "confirmation")
+            )
+            if _read_text_arg(args, "text", "confirmation")
+            else _missing_required("confirm_ideation_summary", "text")
         ),
-        "generate_outline_draft": lambda args: adapter.generate_outline_draft(
-            _read_text_arg(args, "request_text", "text", default="帮我生成一份四级大纲")
+        "generate_outline_draft": lambda args: (
+            adapter.generate_outline_draft(
+                _read_text_arg(args, "request_text", "text")
+            )
+            if _read_text_arg(args, "request_text", "text")
+            else _missing_required("generate_outline_draft", "request_text")
         ),
         "confirm_outline_scope": lambda args: adapter.confirm_outline_scope(),
         "run_chapter_preflight": lambda args: (
@@ -163,8 +171,12 @@ def build_goethe_tool_layers(
     adapter = GoetheActionAdapter(runtime)
     action_tool_executors: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         "summarize_ideation": lambda args: adapter.summarize_ideation(),
-        "confirm_ideation_summary": lambda args: adapter.confirm_ideation_summary(
-            _read_text_arg(args, "text", "confirmation", default="这个汇总可以")
+        "confirm_ideation_summary": lambda args: (
+            adapter.confirm_ideation_summary(
+                _read_text_arg(args, "text", "confirmation")
+            )
+            if _read_text_arg(args, "text", "confirmation")
+            else _missing_required("confirm_ideation_summary", "text")
         ),
         "generate_foundation_draft": lambda args: (
             adapter.generate_foundation_draft(

@@ -257,6 +257,8 @@ def test_world_query_supports_direct_script_execution(tmp_path: Path):
         cwd=tmp_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 0

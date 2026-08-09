@@ -686,7 +686,12 @@ class GoetheChatAgent:
             from tools.novel_workspace import build_onboarding_checklist
 
             return build_onboarding_checklist(self.project_root, self.novel_id)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Goethe 加载 onboarding 清单失败，按空处理: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
             return {}
 
     def _project_identity_context(self, onboarding: dict[str, Any]) -> str:

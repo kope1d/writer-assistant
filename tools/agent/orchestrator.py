@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +23,9 @@ from ..workflow_scheduler import WorkflowScheduler
 from ..writing_targets import normalize_writing_targets, outline_prompt_constraints
 from .book_state import BookStage, BookState, BookStateStore
 from .toolkits import ORCHESTRATOR_TOOLKIT, WRITING_TOOLKIT
+from ..utils import atomic_write_text
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -426,11 +430,13 @@ class OpenWriteOrchestrator:
         if self._looks_like_character_creation_request(text):
             return self._handle_character_creation(text)
 
+        if self._looks_like_confirmation_question(text):
+            return self._handle_confirmation_question()
+
         return self._handle_discovery(text)
 
-    def run_cli(self, instruction: str, quiet: bool = False, max_turns: int = 20) -> int:
-        """Run a deterministic CLI interaction."""
-        _ = max_turns
+    def run_cli(self, instruction: str, quiet: bool = False) -> int:
+        """Run a deterministic CLI interaction (single turn)."""
 
         if self._is_status_request(instruction):
             result = self._handle_status_request()
@@ -535,8 +541,12 @@ class OpenWriteOrchestrator:
         if self.state_store.path.exists():
             try:
                 return self.state_store.load_or_create()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "读取 BookState 快照失败，按空状态处理: %s: %s",
+                    type(exc).__name__,
+                    exc,
+                )
         return BookState(novel_id=self.novel_id)
 
     def _format_cli_preflight_message(self, chapter_id: str, result: dict[str, Any]) -> str:
@@ -911,6 +921,37 @@ class OpenWriteOrchestrator:
             )
         )
 
+    def _looks_like_confirmation_question(self, text: str) -> bool:
+        """识别“确认大纲了吗？”这类询问确认状态的疑问句，
+        避免被当作灵感记录进 ideation。"""
+        compact = re.sub(r"\s+", "", text)
+        if not any(mark in compact for mark in ("吗", "？", "?")):
+            return False
+        return bool(
+            re.search(
+                r"(?:确认|好了|通过|可以|ready|confirm|proceed).{0,8}"
+                r"(?:大纲|提纲|设定|基础|foundation|outline)",
+                compact,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    def _handle_confirmation_question(self) -> OrchestratorResult:
+        if self.state.pending_confirmation == "ideation_summary":
+            message = "当前待确认的是想法汇总。请回复“确认”，或继续补充想法后再确认。"
+        elif self.state.pending_confirmation:
+            message = f"当前有待确认事项（{self.state.pending_confirmation}），确认后我才会继续推进。"
+        elif self.state.stage == BookStage.DISCOVERY:
+            message = "还没有生成想法汇总；先让我整理当前灵感为汇总，再确认后进入大纲。"
+        else:
+            message = "当前没有待确认事项，可以直接继续推进。"
+        return OrchestratorResult(
+            message=message,
+            stage=self.state.stage,
+            blocked=False,
+            next_action="await_confirmation",
+        )
+
     def _looks_like_outline_confirmation(self, text: str) -> bool:
         lowered = text.lower()
         if any(term in text for term in ("吗", "？", "?")):
@@ -1090,7 +1131,8 @@ class OpenWriteOrchestrator:
         )
         snapshot_dir.mkdir(parents=True, exist_ok=True)
         snapshot_path = snapshot_dir / f"{chapter_id}.yaml"
-        snapshot_path.write_text(
+        atomic_write_text(
+            snapshot_path,
             yaml.safe_dump(packet, allow_unicode=True, sort_keys=False),
             encoding="utf-8",
         )
@@ -1484,7 +1526,8 @@ class OpenWriteOrchestrator:
 
         path = scheduler.workflow_dir / f"wf_{workflow.chapter_id}.yaml"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             yaml.safe_dump(
                 workflow.to_dict(),
                 allow_unicode=True,

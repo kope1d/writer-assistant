@@ -16,7 +16,32 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Any
 
+
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 logger = logging.getLogger(__name__)
+
+
+def _coerce_confidence(value: Any, default: float = 0.5) -> float:
+    """Coerce model-provided confidence into a float in [0, 1]."""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed != parsed:  # NaN
+        return default
+    return max(0.0, min(1.0, parsed))
 
 
 @dataclass
@@ -326,7 +351,7 @@ class RadarAgent:
         recommendations: list[PlatformRecommendation],
         top_n: int,
     ) -> list[PlatformRecommendation]:
-        limit = max(1, int(top_n or 1))
+        limit = max(1, _safe_int(top_n, 1))
         counts: dict[str, int] = {}
         selected: list[PlatformRecommendation] = []
         for item in sorted(
@@ -361,7 +386,7 @@ class RadarAgent:
                 PlatformRecommendation(
                     platform=item.get("platform", ""),
                     genre=item.get("genre", "unknown"),
-                    confidence=item.get("confidence", 0.5),
+                    confidence=_coerce_confidence(item.get("confidence")),
                     concept=item.get("concept", ""),
                     reasoning=item.get("reasoning", ""),
                     benchmarks=item.get("benchmarks", []),

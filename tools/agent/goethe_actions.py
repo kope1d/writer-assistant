@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import tempfile
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,50 @@ from ..utils import generate_id
 from .base import AgentContext
 from .book_state import BookStage, BookStateStore
 from .orchestrator import OpenWriteOrchestrator, OrchestratorResult
+
+
+def _run_async(factory: Callable[[], Any]) -> Any:
+    """Run an async callable from sync code, safe inside an existing event loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    result: list[Any] = []
+    errors: list[BaseException] = []
+
+    def runner() -> None:
+        try:
+            result.append(asyncio.run(factory()))
+        except BaseException as exc:  # pragma: no cover - exercised only inside async hosts
+            errors.append(exc)
+
+    thread = threading.Thread(target=runner, daemon=True)
+    thread.start()
+    thread.join()
+    if errors:
+        raise errors[0]
+    return result[0]
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write text to path atomically (temp file + rename)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 class GoethePlanningRuntime:
@@ -231,8 +277,8 @@ class GoethePlanningRuntime:
             "foundation", max_chars=2000
         )
 
-        character_md = asyncio.run(
-            architect.generate_character(
+        character_md = _run_async(
+            lambda: architect.generate_character(
                 name=name,
                 role=role,
                 genre=genre,
@@ -265,9 +311,9 @@ class GoethePlanningRuntime:
                 "特殊能力",
             ],
         }
-        draft_path.write_text(
+        _atomic_write_text(
+            draft_path,
             compose_toml_document(draft_meta, character_md),
-            encoding="utf-8",
         )
         state = self.book_state_store.load_or_create()
         state.pending_confirmation = f"character:{character_id}"
@@ -812,7 +858,11 @@ class GoethePlanningRuntime:
         outline_errors = self._outline_readiness_errors(outline_text)
         outline_pending = self.story_planning_store.outline_edit_state_path.exists()
         persona_documents = self.story_planning_store.list_character_documents()
-        persona_paths = [item["path"] for item in persona_documents]
+        persona_paths = [
+            str(item.get("path", ""))
+            for item in persona_documents
+            if isinstance(item, dict) and item.get("path")
+        ]
         persona_errors = [
             error
             for item in persona_documents

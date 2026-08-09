@@ -1746,4 +1746,14 @@ def main():
 
 
 if __name__ == "__main__":
+    # 固定 stdout/stderr 为 UTF-8（errors=replace 兜底）：作为脚本被
+    # subprocess 调用时输出编码必须可预期，不能随终端 locale（GBK 等）
+    # 漂移——父进程按 UTF-8 解码即稳定。
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     main()

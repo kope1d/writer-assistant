@@ -3,7 +3,40 @@
 
 from __future__ import annotations
 
-from typing import Optional
+import os
+import tempfile
+from pathlib import Path
+from typing import Any, Optional
+
+
+def atomic_write_text(path: Any, content: str, *, encoding: str = "utf-8") -> Path:
+    """原子写入文本文件：临时文件 + fsync + os.replace。
+
+    覆盖式 write_text() 在进程中断/磁盘满时会把目标文件写坏；
+    原子写保证目标文件要么是旧内容、要么是新内容，从不处于半写状态。
+    异常时清理临时文件，不留下 .tmp 垃圾。
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding=encoding,
+            dir=str(target.parent),
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temp_path = Path(handle.name)
+        temp_path.replace(target)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+    return target
 
 
 def parse_chapter_id(user_input: str) -> Optional[str]:
@@ -109,12 +142,15 @@ def generate_id(name: str, id_type: str = "character") -> str:
     except ImportError:
         # 如果没有安装pypinyin，使用简单替换
         # 这只是fallback，建议安装pypinyin
+        import hashlib
         import re
 
         # 移除空格和特殊字符
         id_str = re.sub(r"[^\u4e00-\u9fa5]", "", name)
-        # 使用hash作为fallback
-        return f"{id_type}_{hash(name) % 10000:04d}"
+        # 使用稳定哈希作为 fallback：内建 hash() 受 PYTHONHASHSEED
+        # 影响，跨进程/重启会生成不同 ID，导致引用断裂。
+        digest = hashlib.sha256(name.encode('utf-8')).hexdigest()[:6]
+        return f"{id_type}_{digest}"
 
 
 def validate_enum(value: str, enum_type: str) -> bool:

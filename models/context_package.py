@@ -152,12 +152,18 @@ class GenerationContext(BaseModel):
             return value
 
         data = dict(value)
+        # legacy 键可能为 null（旧数据 `pending_hooks: null` 时 get() 返回 None，
+        # 赋给 str 字段会抛 ValidationError），用 or "" 宽容降级。
         if "foreshadowing_summary" not in data and "pending_hooks" in data:
-            data["foreshadowing_summary"] = data.get("pending_hooks", "")
+            data["foreshadowing_summary"] = data.get("pending_hooks") or ""
         if "ledger" not in data and "particle_ledger" in data:
-            data["ledger"] = data.get("particle_ledger", "")
+            data["ledger"] = data.get("particle_ledger") or ""
         if "relationships" not in data and "character_matrix" in data:
-            data["relationships"] = data.get("character_matrix", "")
+            data["relationships"] = data.get("character_matrix") or ""
+        # canonical 字段本身为 null 时同样降级为空字符串
+        for key in ("foreshadowing_summary", "ledger", "relationships", "current_state"):
+            if data.get(key) is None:
+                data[key] = ""
         return data
 
     @property

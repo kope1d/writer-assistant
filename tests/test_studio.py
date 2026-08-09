@@ -778,7 +778,12 @@ def test_studio_searches_project_assets(tmp_path: Path):
     init_project(tmp_path, "demo")
     path = tmp_path / "data" / "novels" / "demo" / "src" / "story" / "background.md"
     path.write_text("# 故事背景\n\n钟楼每天少走十三秒。\n", encoding="utf-8")
-    app = StudioApplication(tmp_path)
+    # 必须传隔离的 settings store：search_project 走 LightRAG embedding，
+    # 若 restore_environment() 注入机器真实 LLM_* 配置会触发真实云 embedding。
+    app = StudioApplication(
+        tmp_path,
+        model_settings_store=StudioModelSettingsStore(tmp_path / "preferences"),
+    )
 
     result = app.search_project("十三秒", "story")
 
@@ -876,7 +881,7 @@ def test_studio_context_preview_exposes_traceable_manifest(tmp_path: Path):
     assert preview["manifest"]["revision"]
 
 
-def test_studio_outline_structure_and_smart_chapter_creation(tmp_path: Path, monkeypatch):
+def test_studio_outline_structure_and_smart_chapter_creation(tmp_path: Path):
     init_project(tmp_path, "demo")
     novel = tmp_path / "data" / "novels" / "demo"
     (novel / "src" / "outline.md").write_text(
@@ -893,7 +898,9 @@ def test_studio_outline_structure_and_smart_chapter_creation(tmp_path: Path, mon
     manuscript = novel / "data" / "manuscript" / "arc_001"
     manuscript.mkdir(parents=True, exist_ok=True)
     (manuscript / "ch_001.md").write_text("已有正文", encoding="utf-8")
-    monkeypatch.setenv("LLM_API_KEY", "configured-for-test")
+    # 不要设置 LLM_API_KEY：write_next_chapter 的 workspace 诊断会触发
+    # LightRAG 云 embedding（真实 API 调用，端点不可用时挂起 120s）。
+    # fake_writer 注入后 profile 解析本就返回 None，key 对测试无意义。
     calls = []
 
     def fake_writer(root: Path, args: dict) -> dict:
@@ -1341,9 +1348,11 @@ def test_studio_rejects_paths_outside_novel_documents(tmp_path: Path):
         app.write_document("data/workflows/book_state.yaml", "x", None)
 
 
-def test_studio_focus_and_writer_reuse_openwrite_pipeline(tmp_path: Path, monkeypatch):
+def test_studio_focus_and_writer_reuse_openwrite_pipeline(tmp_path: Path):
     init_project(tmp_path, "demo")
-    monkeypatch.setenv("LLM_API_KEY", "configured-for-test")
+    # 不要设置 LLM_API_KEY：write_next_chapter/workspace 的诊断会触发
+    # LightRAG 云 embedding（真实 API，端点不可用时挂起 120s）。
+    # fake writer/reviewer 注入后 profile 解析返回 None，key 无意义。
     calls: list[dict] = []
 
     def fake_writer(root: Path, args: dict) -> dict:
@@ -1621,10 +1630,12 @@ def test_studio_continuity_and_foreshadowing_management(tmp_path: Path):
 
 
 def test_studio_chat_and_source_extraction_use_injected_real_surfaces(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ):
     init_project(tmp_path, "demo")
-    monkeypatch.setenv("LLM_API_KEY", "configured-for-test")
+    # 不要设置 LLM_API_KEY：chat/source 返回的 workspace 会触发 LightRAG
+    # 云 embedding（真实 API，端点不可用时挂起 120s）。
+    # 注入 fake executor 后 profile 解析返回 None，key 无意义。
     chat_calls: list[tuple[str, str]] = []
     source_calls: list[dict] = []
 

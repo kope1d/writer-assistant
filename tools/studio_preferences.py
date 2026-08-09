@@ -116,19 +116,26 @@ class StudioModelSettingsStore:
             self.directory.chmod(0o700)
         except OSError:
             pass
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=self.directory,
-            delete=False,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-        ) as handle:
-            handle.write(content)
-            temp_path = Path(handle.name)
-        temp_path.chmod(0o600)
-        temp_path.replace(path)
-        path.chmod(0o600)
+        # 凭证文件含明文 api_key：任何一步失败都必须清理临时文件，
+        # 否则明文密钥会以 .tmp 形式残留在磁盘。
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.directory,
+                delete=False,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+            ) as handle:
+                handle.write(content)
+                temp_path = Path(handle.name)
+            temp_path.chmod(0o600)
+            temp_path.replace(path)
+            path.chmod(0o600)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
 
 
 class StudioResearchSettingsStore:
@@ -238,17 +245,23 @@ class StudioResearchSettingsStore:
             self.directory.chmod(0o700)
         except OSError:
             pass
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=self.directory,
-            delete=False,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-        ) as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-            temp_path = Path(handle.name)
-        temp_path.chmod(0o600)
-        temp_path.replace(path)
-        path.chmod(0o600)
+        # 同上：研究搜索凭证含明文密钥，失败路径必须清理临时文件。
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.directory,
+                delete=False,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+            ) as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                temp_path = Path(handle.name)
+            temp_path.chmod(0o600)
+            temp_path.replace(path)
+            path.chmod(0o600)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)

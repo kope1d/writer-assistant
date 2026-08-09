@@ -14,6 +14,20 @@ from typing import Any
 
 import yaml
 
+
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 SCHEMA_VERSION = 1
 DEFAULT_FIELD = "综合状态"
 DEFAULT_LOOKBACK = 50
@@ -63,10 +77,10 @@ class CharacterStateRecord:
             old_state=str(value.get("old_state") or ""),
             new_state=str(value.get("new_state") or ""),
             chapter_id=str(value.get("chapter_id") or ""),
-            chapter_number=int(value.get("chapter_number") or 0),
+            chapter_number=_safe_int(value.get("chapter_number"), 0),
             source_kind=str(value.get("source_kind") or "reference"),
             source_path=str(value.get("source_path") or ""),
-            line=int(value.get("line") or 0),
+            line=_safe_int(value.get("line"), 0),
         )
 
 

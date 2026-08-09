@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import tempfile
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
@@ -15,6 +16,32 @@ import yaml
 
 from tools.context_schema import normalize_context_payload
 from tools.style_synthesizer import render_style_manifest_summary
+from tools.utils import atomic_write_text
+
+
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+def _safe_float(value, default=0.0):
+    """宽容转换浮点数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 
 
 def configure_writer_llm(config: Any) -> dict[str, Any]:
@@ -102,8 +129,13 @@ def _chapter_number(chapter_id: Any) -> int:
 
 
 def _chapter_path(project_root: Path, novel_id: str, chapter_id: str) -> Path:
+    clean_chapter = str(chapter_id or "").strip()
+    if not re.fullmatch(r"ch_\d+", clean_chapter):
+        raise ValueError(f"章节 ID 必须形如 ch_001，实际为 {chapter_id!r}")
     config = _load_config(project_root)
     arc_id = str(config.get("current_arc") or "arc_001")
+    if not re.fullmatch(r"arc_\d+", arc_id):
+        raise ValueError(f"current_arc 必须形如 arc_001，实际为 {arc_id!r}")
     return (
         project_root
         / "data"
@@ -112,12 +144,15 @@ def _chapter_path(project_root: Path, novel_id: str, chapter_id: str) -> Path:
         / "data"
         / "manuscript"
         / arc_id
-        / f"{chapter_id}.md"
+        / f"{clean_chapter}.md"
     )
 
 
 def _load_chapter(project_root: Path, novel_id: str, chapter_id: str) -> str | None:
-    expected = _chapter_path(project_root, novel_id, chapter_id)
+    try:
+        expected = _chapter_path(project_root, novel_id, chapter_id)
+    except ValueError:
+        return None
     if expected.is_file():
         return expected.read_text(encoding="utf-8")
     root = project_root / "data" / "novels" / novel_id / "data" / "manuscript"
@@ -653,7 +688,7 @@ def _load_resumable_writer_result(store: Any, manifest: Any) -> SimpleNamespace:
     return SimpleNamespace(
         title=str(draft.get("title") or ""),
         content=str(draft.get("content") or ""),
-        word_count=int(draft.get("word_count") or 0),
+        word_count=_safe_int(draft.get("word_count"), 0),
         state_updates=dict(facts.get("legacy_updates") or {}),
         state_delta=dict(facts.get("state_delta") or {}),
         chapter_summary=str(draft.get("chapter_summary") or ""),
@@ -681,7 +716,7 @@ def execute_write_chapter(project_root: Path, args: dict[str, Any]) -> dict[str,
     chapter_id = str(args.get("chapter_id") or "ch_001")
     packet = args.get("context_packet")
     packet = packet if isinstance(packet, dict) else {}
-    target_words = int(args.get("target_words") or 0)
+    target_words = _safe_int(args.get("target_words"), 0)
     scheduler = WorkflowScheduler(project_root, novel_id)
     workflow = scheduler.load_or_create(chapter_id)
     active_stage = ""
@@ -880,7 +915,7 @@ def execute_write_chapter(project_root: Path, args: dict[str, Any]) -> dict[str,
                     writer.write_chapter(
                         context=writer_payload,
                         chapter_number=_chapter_number(chapter_id) or 1,
-                        temperature=float(args.get("temperature") or 0.7),
+                        temperature=_safe_float(args.get("temperature"), 0.7),
                         target_words=writer_payload.get("target_words") or None,
                     )
                 )
@@ -951,26 +986,31 @@ def execute_write_chapter(project_root: Path, args: dict[str, Any]) -> dict[str,
                     project_root, novel_id, chapter_id, result.title, result.content
                 )
                 run_v2_active_stage = "settle"
-                run_v2_store.start_stage(
-                    run_v2_manifest,
-                    "settle",
-                    prompt_version="runtime-delta-v1",
-                )
-                state_delta, state_delta_fallback = apply_runtime_delta_with_fallback(
-                    truth_manager,
-                    state_delta,
-                    updates,
-                    chapter_id=chapter_id,
-                    known_entities=known_entities,
-                )
-                run_v2_store.complete_stage(
-                    run_v2_manifest,
-                    "settle",
-                    output={
-                        "state_delta": state_delta,
-                        "fallback": state_delta_fallback,
-                    },
-                )
+                if run_v2_manifest.stages["settle"].status != "completed":
+                    # 仅当 settle 尚未完成才应用运行态 delta，否则 resume 重放
+                    # 会把同一份 delta 重复写入真相文件。
+                    run_v2_store.start_stage(
+                        run_v2_manifest,
+                        "settle",
+                        prompt_version="runtime-delta-v1",
+                    )
+                    state_delta, state_delta_fallback = apply_runtime_delta_with_fallback(
+                        truth_manager,
+                        state_delta,
+                        updates,
+                        chapter_id=chapter_id,
+                        known_entities=known_entities,
+                    )
+                    run_v2_store.complete_stage(
+                        run_v2_manifest,
+                        "settle",
+                        output={
+                            "state_delta": state_delta,
+                            "fallback": state_delta_fallback,
+                        },
+                    )
+                else:
+                    state_delta_fallback = False
                 memory.save(
                     chapter_id=chapter_id,
                     title=result.title,
@@ -1273,7 +1313,7 @@ def execute_review_chapter(project_root: Path, args: dict[str, Any]) -> dict[str
                 "issue_details": issues,
                 "run_id": run_manifest.run_id if run_manifest else "",
                 "run_id_v2": run_v2_manifest.run_id if run_v2_manifest else "",
-                "effective_target_words": int(review_context.get("target_words") or 0),
+                "effective_target_words": _safe_int(review_context.get("target_words"), 0),
                 "strict": strict,
                 "dimensions": dimensions,
             }
@@ -1420,7 +1460,7 @@ def execute_multi_agent_chapter(
                 output_dir.mkdir(parents=True, exist_ok=True)
                 stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 target = output_dir / f"{chapter_id}_packet_{stamp}.md"
-                target.write_text(packet_markdown, encoding="utf-8")
+                atomic_write_text(target, packet_markdown)
                 packet_path = str(target)
             scheduler.complete_stage(
                 workflow,
@@ -1436,7 +1476,7 @@ def execute_multi_agent_chapter(
             scheduler.start_stage(workflow, active_stage)
             director_options: dict[str, Any] = {}
             guidance = str(args.get("guidance") or "").strip()
-            target_words = int(args.get("target_words") or 0)
+            target_words = _safe_int(args.get("target_words"), 0)
             if guidance:
                 director_options["guidance"] = guidance
             if target_words > 0:
@@ -1448,7 +1488,7 @@ def execute_multi_agent_chapter(
             result = asyncio.run(
                 director.run(
                     chapter_id=chapter_id,
-                    temperature=float(args.get("temperature") or 0.7),
+                    temperature=_safe_float(args.get("temperature"), 0.7),
                     run_review=not bool(args.get("no_review")),
                     **director_options,
                 )

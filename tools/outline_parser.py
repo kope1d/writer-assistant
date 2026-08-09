@@ -246,8 +246,11 @@ class OutlineMdParser:
         # 标准化键名
         key_lower = key.lower().replace(" ", "_").replace("-", "_")
 
-        # 总纲字段
-        if key_lower in ("核心主题", "core_theme", "主题"):
+        # 总纲字段（"主题" 仅在 MASTER 上视为核心主题的旧格式别名；
+        # ARC 的 "主题" 由下方篇纲分支处理为 arc_theme）
+        if key_lower in ("核心主题", "core_theme") or (
+            key_lower == "主题" and node.node_type == OutlineNodeType.MASTER
+        ):
             node.core_theme = value
         elif key_lower in ("结局走向", "ending_direction", "结局"):
             node.ending_direction = value
@@ -264,9 +267,8 @@ class OutlineMdParser:
                 pass
 
         # 篇纲字段
-        elif key_lower in ("主题", "theme"):
+        elif key_lower in ("主题", "篇主题", "theme", "arc_theme"):
             if node.node_type == OutlineNodeType.ARC:
-                node.core_theme = value
                 node.arc_theme = value
         elif key_lower in ("起止章节", "chapters"):
             node.chapter_range = value

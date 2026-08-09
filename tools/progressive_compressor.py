@@ -617,14 +617,28 @@ class ProgressiveCompressor:
         section_node = hierarchy.get_node(section_id) if section_id else None
         arc_id = section_node.parent_id if section_node else None
 
-        # 累积章节文本（这里简化处理，实际应该累积整节的文本）
-        # 暂时只压缩单个章节
-        if arc_id and section_id:
+        if not (arc_id and section_id):
+            return None
+
+        # 累积：若该节已有压缩结果，将旧摘要与本章文本合并后重新压缩，
+        # 并保留已累积的 key_events / character_changes，避免每章覆盖上一章。
+        existing = self._load_section_compression(section_id)
+        if existing is not None:
+            combined = "\n".join(
+                part for part in (existing.compressed_text, chapter_text) if part
+            )
             result = self.compress_section(
                 section_id=section_id,
                 arc_id=arc_id,
-                full_text=chapter_text,
+                full_text=combined,
+                key_events=existing.key_events,
+                character_changes=existing.character_changes,
             )
             return result
 
-        return None
+        result = self.compress_section(
+            section_id=section_id,
+            arc_id=arc_id,
+            full_text=chapter_text,
+        )
+        return result

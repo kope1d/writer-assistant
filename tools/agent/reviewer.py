@@ -20,6 +20,20 @@ from dataclasses import dataclass, field
 from ..llm import Message
 from .base import BaseAgent
 
+
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -128,7 +142,7 @@ class ReviewerAgent(BaseAgent):
         # ── 规则类检查（零 LLM 成本）─
         rule_issues = self._rule_based_check(
             content,
-            target_words=int(context.get("target_words") or 0),
+            target_words=_safe_int(context.get("target_words"), 0),
         )
         all_issues.extend(rule_issues)
 

@@ -26,6 +26,9 @@ class CharacterProfile(BaseModel):
     character_id: str = Field(default="", description="角色 ID")
     name: str = Field(default="", description="角色名")
     tier: CharacterTier = Field(default=CharacterTier.MINOR, description="层级")
+    age: Optional[int] = Field(default=None, description="年龄")
+    gender: str = Field(default="", description="性别")
+    occupation: str = Field(default="", description="职业")
     summary: str = Field(default="", description="一句话摘要")
     backstory: str = Field(default="", description="背景")
     appearance: str = Field(default="", description="外貌")
@@ -44,6 +47,12 @@ class CharacterProfile(BaseModel):
         parts: List[str] = [f"【{self.name}】 ({self.tier.value})"]
         if self.summary:
             parts.append(f"摘要: {self.summary}")
+        if self.age is not None:
+            parts.append(f"年龄: {self.age}")
+        if self.gender:
+            parts.append(f"性别: {self.gender}")
+        if self.occupation:
+            parts.append(f"职业: {self.occupation}")
         if self.appearance:
             parts.append(f"外貌: {self.appearance}")
         if self.personality:
@@ -107,6 +116,9 @@ class CharacterCard(BaseModel):
             character_id=self.id,
             name=self.name,
             tier=CharacterTier(self.tier) if self.tier in [t.value for t in CharacterTier] else CharacterTier.MINOR,
+            age=self.age,
+            gender=self.gender or "",
+            occupation=self.occupation,
             summary=self.brief,
             appearance=self.appearance,
             backstory=self.background,

@@ -726,6 +726,9 @@ class ContextBuilder:
             tier=CharacterTier(static.get("tier"))
             if static.get("tier") in [t.value for t in CharacterTier]
             else CharacterTier.MINOR,
+            age=static.get("age"),
+            gender=static.get("gender", "") or "",
+            occupation=static.get("occupation", "") or "",
             summary=static.get("brief", ""),
             appearance=static.get("appearance", ""),
             backstory=static.get("background", ""),

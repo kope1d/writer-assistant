@@ -15,6 +15,20 @@ from models.manuscript_editing import ManuscriptAnnotationV1, ManuscriptVersionV
 from tools.novel_workspace import count_writing_units
 
 
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+
 class ManuscriptEditingError(RuntimeError):
     def __init__(self, message: str, *, code: str = "MANUSCRIPT_EDITING_ERROR") -> None:
         super().__init__(message)
@@ -131,7 +145,9 @@ class ManuscriptVersionStore:
         clean = self._chapter_id(chapter_id)
         manuscript_root = (self.novel_root / "data" / "manuscript").resolve()
         matches: list[Path] = []
-        for candidate in manuscript_root.glob(f"**/{clean}.md"):
+        # 正文固定位于 manuscript/arc_*/ch_XXX.md；只在这一层查找，
+        # 避免把快照/缓存等非正文位置的同名文件误判为 ID 重复。
+        for candidate in manuscript_root.glob(f"arc_*/{clean}.md"):
             try:
                 resolved = candidate.resolve()
                 resolved.relative_to(manuscript_root)
@@ -365,8 +381,8 @@ def manuscript_editing_action(
             chapter_id,
             source_revision=str(payload.get("revision") or ""),
             quote=str(payload.get("quote") or ""),
-            start_hint=int(payload.get("start_hint") or 0),
-            end_hint=int(payload.get("end_hint") or 0),
+            start_hint=_safe_int(payload.get("start_hint"), 0),
+            end_hint=_safe_int(payload.get("end_hint"), 0),
             note=str(payload.get("note") or ""),
         ).model_dump(mode="json")
     if action == "resolve_annotation":

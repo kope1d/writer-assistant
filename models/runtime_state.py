@@ -137,6 +137,10 @@ class RuntimeDeltaOperation(StrictModel):
             raise ValueError(f"{self.op} operation requires value")
         if self.op == "propose" and self.collection != "proposed_entities":
             raise ValueError("propose operation must target proposed_entities")
+        if self.collection == "timeline" and self.op not in {"append", "remove"}:
+            # apply 层（tools.runtime_state._apply_timeline_operation）只支持
+            # 时间线追加/删除；resolve/set 组合应在此拒绝而非运行时才报错。
+            raise ValueError("timeline only supports append/remove operations")
         if (
             self.op in {"set", "append", "propose"}
             and self.collection in OBJECT_VALUE_COLLECTIONS

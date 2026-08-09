@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -174,7 +175,10 @@ class WorkflowScheduler:
 
     def load_workflow(self, chapter_id: str) -> Optional[WorkflowState]:
         """加载已有工作流（跨会话恢复）"""
-        path = self._state_path(chapter_id)
+        try:
+            path = self._state_path(chapter_id)
+        except ValueError:
+            return None
         if not path.exists():
             return None
         try:
@@ -343,7 +347,11 @@ class WorkflowScheduler:
         return None
 
     def _state_path(self, chapter_id: str) -> Path:
-        return self.workflow_dir / f"wf_{chapter_id}.yaml"
+        # 校验章节 ID，防止把用户输入直接拼进文件路径造成路径穿越。
+        clean = str(chapter_id or "").strip()
+        if not re.fullmatch(r"ch_\d+", clean):
+            raise ValueError(f"章节 ID 必须形如 ch_001，实际为 {chapter_id!r}")
+        return self.workflow_dir / f"wf_{clean}.yaml"
 
     def _save_state(self, state: WorkflowState) -> None:
         path = self._state_path(state.chapter_id)

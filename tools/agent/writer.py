@@ -28,6 +28,20 @@ from ..outline_contract import INLINE_ANNOTATION_CONTRACT
 from ..runtime_state_contract import RUNTIME_DELTA_PROMPT_CONTRACT
 from .base import BaseAgent
 
+
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -676,7 +690,7 @@ chapter_summary: "80-150字章节摘要"
                         {
                             **raw_delta,
                             "chapter_id": raw_delta.get("chapter_id")
-                            or f"ch_{int(context.get('chapter_number') or 0):03d}",
+                            or f"ch_{_safe_int(context.get('chapter_number'), 0):03d}",
                         }
                     )
                     result["state_delta"] = parsed_delta.model_dump(mode="json")
@@ -704,7 +718,7 @@ chapter_summary: "80-150字章节摘要"
 
                 result["state_delta"] = legacy_updates_to_delta(
                     result["state_updates"],
-                    chapter_id=f"ch_{int(context.get('chapter_number') or 0):03d}",
+                    chapter_id=f"ch_{_safe_int(context.get('chapter_number'), 0):03d}",
                 ).model_dump(mode="json")
             elif delta_error is not None:
                 from ..llm.response import ProviderResponseError

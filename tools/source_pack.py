@@ -605,7 +605,17 @@ class SourcePackService:
         from tools.style_synthesizer import synthesize_style_document
 
         config_path = self.project_root / "novel_config.yaml"
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        config: dict[str, Any] = {}
+        if config_path.exists():
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if raw is None:
+                config = {}
+            elif isinstance(raw, dict):
+                config = raw
+            else:
+                raise ValueError(
+                    f"novel_config.yaml 顶层必须是映射，实际为 {type(raw).__name__}"
+                )
         config["style_id"] = source_id
         synthesize_style_document(self.project_root, self.novel_id, source_id)
         config_path.write_text(

@@ -17,6 +17,7 @@ from typing import Any
 from tools.llm.response import redact_sensitive_text
 from tools.studio_preferences import StudioResearchSettingsStore
 from tools.task_runner import TaskCancelled, TaskContext
+from tools.utils import atomic_write_text
 
 MAX_PROCESS_OUTPUT_BYTES = 2_000_000
 MAX_ERROR_DETAIL_CHARS = 1200
@@ -272,8 +273,9 @@ class ResearchService:
             "artifact_ref": str(source_report.parent.relative_to(self.novel_root)),
             "metrics": summary.get("metrics") or {},
         }
-        target_metadata.write_text(
-            json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        atomic_write_text(
+            target_metadata,
+            json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
         )
         if metadata["status"] == "failed":
             raise ResearchServiceError(

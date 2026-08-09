@@ -28,6 +28,20 @@ from tools.llm.model_catalog import (
 )
 from tools.studio_preferences import StudioModelSettingsStore, default_studio_preferences_dir
 
+
+
+def _safe_float(value, default=0.0):
+    """宽容转换浮点数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 PROFILE_VERSION = 1
 ROUTE_KEYS = (
     "goethe",
@@ -136,8 +150,8 @@ class ModelProfileStore:
             "max_output_tokens": int(
                 legacy.get("max_tokens") or os.environ.get("LLM_MAX_TOKENS") or 24000
             ),
-            "temperature": float(os.environ.get("LLM_TEMPERATURE", "0.7")),
-            "timeout_seconds": float(os.environ.get("LLM_TIMEOUT_SECONDS", "120")),
+            "temperature": _safe_float(os.environ.get("LLM_TEMPERATURE"), 0.7),
+            "timeout_seconds": _safe_float(os.environ.get("LLM_TIMEOUT_SECONDS"), 120),
             "credential_ref": "key_default",
             "embedding_provider": os.environ.get(
                 "OPENWRITE_LIGHTRAG_EMBEDDING_PROVIDER", "local"

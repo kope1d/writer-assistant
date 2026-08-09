@@ -149,9 +149,9 @@ class OutlineMdSerializer:
         metadata = []
 
         if node.summary:
-            metadata.append(f"> 主题: {node.summary}")
-        if node.arc_theme and node.arc_theme != node.summary:
-            metadata.append(f"> 篇主题: {node.arc_theme}")
+            metadata.append(f"> 摘要: {node.summary}")
+        if node.arc_theme:
+            metadata.append(f"> 主题: {node.arc_theme}")
         if node.word_count_target:
             metadata.append(f"> 目标字数: {node.word_count_target}")
         if node.arc_structure:
@@ -207,9 +207,7 @@ class OutlineMdSerializer:
         if node.purpose:
             metadata.append(f"> 目的: {node.purpose}")
         if node.summary:
-            metadata.append(
-                f"> 摘要: {node.summary[:100]}{'...' if len(node.summary) > 100 else ''}"
-            )
+            metadata.append(f"> 摘要: {node.summary}")
         if node.section_structure:
             metadata.append(f"> 节结构: {node.section_structure}")
         if node.section_emotional_arc:

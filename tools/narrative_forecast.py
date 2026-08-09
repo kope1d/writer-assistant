@@ -17,6 +17,20 @@ from pydantic import ValidationError
 from models.narrative_forecast import ForecastBranchV1, NarrativeForecastV1
 
 
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+
 class NarrativeForecastError(RuntimeError):
     def __init__(self, message: str, *, code: str = "NARRATIVE_FORECAST_ERROR") -> None:
         super().__init__(message)
@@ -692,7 +706,7 @@ def narrative_forecast_action(
     action = str(payload.get("action") or "list")
     if action == "list":
         current_fingerprint = service.context_fingerprint()
-        forecasts = service.list(limit=int(payload.get("limit") or 20))
+        forecasts = service.list(limit=_safe_int(payload.get("limit"), 20))
         return {
             "forecasts": [
                 service.payload(

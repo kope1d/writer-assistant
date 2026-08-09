@@ -17,7 +17,7 @@ from tools.research_service import (
     ResearchServiceError,
 )
 from tools.studio import create_server
-from tools.studio_preferences import StudioResearchSettingsStore
+from tools.studio_preferences import StudioModelSettingsStore, StudioResearchSettingsStore
 
 
 def test_research_service_archives_and_reads_report(tmp_path: Path):
@@ -236,7 +236,14 @@ def test_research_service_rejects_failed_internal_episode_after_archiving(
 
 def test_studio_exposes_research_status_and_report_route(tmp_path: Path):
     init_project(tmp_path, "demo")
-    server = create_server(tmp_path, port=0)
+    # 必须传隔离的 settings store：否则 StudioApplication 构造时会
+    # restore_environment() 把机器真实 LLM 配置与 API Key 写进进程环境，
+    # 污染同进程后续测试（ProjectSearchIndex 会走真实云 embedding 并挂起）。
+    server = create_server(
+        tmp_path,
+        port=0,
+        model_settings_store=StudioModelSettingsStore(tmp_path / "preferences"),
+    )
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

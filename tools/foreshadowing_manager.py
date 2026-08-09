@@ -10,12 +10,13 @@
 
 from __future__ import annotations
 
+import os
+import sys
+import tempfile
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime
-
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from models.foreshadowing import (
@@ -88,31 +89,43 @@ class ForeshadowingDAGManager:
         return cwd
 
     def _load_dag(self) -> ForeshadowingGraph:
-        """加载 DAG 配置"""
+        """加载 DAG 配置
+
+        文件不存在时返回空图；文件存在但解析/校验失败时**必须抛错**，
+        绝不静默返回空图 —— 否则后续 _save_dag 会把空图写回磁盘，
+        静默清空全部伏笔数据。
+        """
         if not self.dag_file.exists():
             return ForeshadowingGraph()
 
-        try:
-            with open(self.dag_file, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-                return ForeshadowingGraph.model_validate(data)
-        except Exception as e:
-            print(f"加载 DAG 配置失败: {e}")
-            return ForeshadowingGraph()
+        with open(self.dag_file, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return ForeshadowingGraph.model_validate(data)
 
     def _save_dag(self, dag: ForeshadowingGraph) -> None:
-        """保存 DAG 配置"""
+        """保存 DAG 配置；原子写 + 失败时抛错，调用方必须感知持久化失败。"""
+        self.dag_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = yaml.dump(
+            dag.model_dump(by_alias=True),
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{self.dag_file.name}.", suffix=".tmp", dir=str(self.dag_file.parent)
+        )
         try:
-            with open(self.dag_file, "w", encoding="utf-8") as f:
-                yaml.dump(
-                    dag.model_dump(by_alias=True),
-                    f,
-                    allow_unicode=True,
-                    default_flow_style=False,
-                    sort_keys=False,
-                )
-        except Exception as e:
-            print(f"保存 DAG 配置失败: {e}")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, self.dag_file)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
     # ── 节点操作 ──────────────────────────────────────────────────
 

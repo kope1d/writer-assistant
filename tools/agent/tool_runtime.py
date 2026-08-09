@@ -16,10 +16,27 @@ import yaml
 
 from tools.novel_service import NovelApplicationService, NovelServiceError
 from tools.text_range import select_folded_range_anchors
+from tools.utils import atomic_write_text
 
 ToolExecutor = Callable[[dict[str, Any]], dict[str, Any]]
 
 DOCUMENT_LONG_OLD_TEXT_CHARS = 240
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """宽容转换整数参数：None/空串/非法值回退 default。
+
+    LLM 工具参数是自由文本，可能传 "limit": "abc" 或 true；
+    int() 直接抛 ValueError 会让整个工具调用返回误导性错误。
+    """
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _service_error(exc: NovelServiceError) -> dict[str, Any]:
@@ -125,7 +142,7 @@ def _application_executor(project_root: Path, operation: str) -> ToolExecutor:
                 return ProjectSearchIndex(novel_root).search(
                     str(args.get("query") or ""),
                     scope=str(args.get("scope") or "all"),
-                    limit=int(args.get("limit") or 20),
+                    limit=_safe_int(args.get("limit"), 20),
                 )
             if operation == "query_library":
                 from tools.library_catalog import query_library
@@ -136,7 +153,7 @@ def _application_executor(project_root: Path, operation: str) -> ToolExecutor:
                     scope=str(args.get("scope") or "all"),
                     category=str(args.get("category") or ""),
                     query=str(args.get("query") or ""),
-                    limit=int(args.get("limit") or 80),
+                    limit=_safe_int(args.get("limit"), 80),
                 )
             if operation == "read_project_document":
                 return _read_project_document(project_root, novel_id, args)
@@ -149,7 +166,7 @@ def _application_executor(project_root: Path, operation: str) -> ToolExecutor:
                 return {
                     "chapters": [
                         {
-                            "number": int(item.chapter_id.split("_")[-1]),
+                            "number": _chapter_index(item.chapter_id),
                             "chapter_id": item.chapter_id,
                             "title": item.title,
                             "path": item.path.relative_to(novel_root).as_posix(),
@@ -218,7 +235,7 @@ def _application_executor(project_root: Path, operation: str) -> ToolExecutor:
                         "validation_errors": validation_errors,
                     }
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                atomic_write_text(path, content)
                 return {"ok": True, "file": str(path), "size": len(content)}
             if operation == "get_outline_structure":
                 from tools.outline_tree import build_outline_structure
@@ -441,7 +458,7 @@ def _application_executor(project_root: Path, operation: str) -> ToolExecutor:
                     str(args.get("query") or ""),
                     project_root=project_root,
                     entity_type=str(args.get("type") or args.get("entity_type") or ""),
-                    limit=int(args.get("limit") or 20),
+                    limit=_safe_int(args.get("limit"), 20),
                 )
             if operation == "edit_world_relation":
                 from tools.world_query import edit_world_relation
@@ -969,9 +986,12 @@ def _replace_document_text_range(
     else:
         for start in start_positions:
             minimum_end = start + len(start_anchor)
+            # 每个 start 只配对其后最近的第一个 end，而不是收集全部组合，
+            # 否则唯一合法区间也会被误判为 ambiguous。
             for end in end_positions:
                 if end >= minimum_end:
                     ranges.append((start, end + len(end_anchor)))
+                    break
     if not ranges:
         return {
             "ok": False,
@@ -1210,12 +1230,24 @@ def _resolve_project_document(
     return candidate, relative
 
 
+def _chapter_index(path: Path | str) -> int:
+    """解析 ch_005 或 ch_005_notes 中的章序号；解析失败返回 0。"""
+    stem = Path(path).stem if isinstance(path, Path) else str(path)
+    match = re.search(r"ch_(\d+)", stem)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return 0
+    return 0
+
+
 def _chapter_text(project_root: Path, novel_id: str, chapter_id: str) -> str:
     root = project_root / "data" / "novels" / novel_id / "data" / "manuscript"
     if chapter_id == "latest":
         candidates = sorted(
             root.glob("**/ch_*.md"),
-            key=lambda path: int(path.stem.split("_")[-1]),
+            key=_chapter_index,
         )
         if candidates:
             chapter_id = candidates[-1].stem
@@ -1322,9 +1354,9 @@ def _chunk_text(args: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": f"文件不存在: {path}"}
     if not path.is_file():
         return {"ok": False, "error": "不支持的路径类型"}
-    result = TextChunker(chunk_size=int(args.get("chunk_size") or 30000)).chunk_file(
-        path
-    )
+    result = TextChunker(
+        chunk_size=_safe_int(args.get("chunk_size"), 30000)
+    ).chunk_file(path)
     chunks = [
         {
             "index": item.index,
@@ -1396,7 +1428,7 @@ def _foreshadowing(
         return {"valid": valid, "errors": errors}
     nodes = manager.get_nodes(
         status=str(args.get("status") or "") or None,
-        min_weight=int(args.get("min_weight") or 1),
+        min_weight=_safe_int(args.get("min_weight"), 1),
         layer=str(args.get("layer") or "") or None,
     )
     statistics = manager.get_statistics()

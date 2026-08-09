@@ -18,6 +18,18 @@ from models.chapter_run_v2 import (
     InterventionV1,
 )
 
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 V2_STAGE_NAMES = (
     "context",
     "plan",
@@ -582,7 +594,7 @@ def chapter_run_v2_action(
         runs = store.list(
             chapter_id=str(payload.get("chapter_id") or ""),
             statuses=statuses,
-            limit=int(payload.get("limit") or 20),
+            limit=_safe_int(payload.get("limit"), 20),
         )
         return {
             "runs": [store.payload(run) for run in runs],

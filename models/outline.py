@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OutlineNodeType(str, Enum):
@@ -89,7 +89,13 @@ class OutlineNode(BaseModel):
     involved_settings: List[str] = Field(default_factory=list, description="涉及设定")
     estimated_words: int = Field(default=0, description="预估字数")
     # 章内微观情绪变化 (canonical field)
-    emotional_arc: str = Field(default="", description="章内情绪变化（微观）")
+    # alias="emotion_arc"：旧数据用 emotion_arc 键输入时不再被静默丢弃；
+    # populate_by_name 让两个键名都可写，输出仍用字段名 emotional_arc。
+    emotional_arc: str = Field(
+        default="", description="章内情绪变化（微观）", alias="emotion_arc"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @property
     def emotion_arc(self) -> str:

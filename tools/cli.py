@@ -31,6 +31,30 @@ from tools.source_sync import (
     run_sync as _shared_run_sync,
 )
 
+
+def _safe_int(value, default=0):
+    """宽容转换整数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value, default=0.0):
+    """宽容转换浮点数：None/空串/非法值回退 default，防外部输入打崩调用方。"""
+    if value is None or isinstance(value, bool) or (
+        isinstance(value, str) and not value.strip()
+    ):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -880,8 +904,8 @@ def _cmd_multi_write(args) -> int:
     logger.info(f"章节已保存: {result['chapter_id']}")
     review = result.get("review")
     if isinstance(review, dict):
-        logger.info(f"审查得分: {float(review.get('score', 0)):.0f}/100")
-        logger.info(f"审查问题数: {int(review.get('issues', 0))}")
+        logger.info(f"审查得分: {_safe_float(review.get('score'), 0):.0f}/100")
+        logger.info(f"审查问题数: {_safe_int(review.get('issues'), 0)}")
     updates = result.get("applied_state_updates") or {}
     if isinstance(updates, dict) and updates:
         logger.info(f"已更新状态文件: {', '.join(updates)}")
@@ -906,8 +930,8 @@ def _cmd_review(args) -> int:
         return 1
 
     logger.info(f"审查结果: {'通过' if result.get('passed') else '未通过'}")
-    logger.info(f"得分: {float(result.get('score', 0)):.0f}/100")
-    logger.info(f"问题数: {int(result.get('issues', 0))}")
+    logger.info(f"得分: {_safe_float(result.get('score'), 0):.0f}/100")
+    logger.info(f"问题数: {_safe_int(result.get('issues'), 0)}")
 
     return 0
 

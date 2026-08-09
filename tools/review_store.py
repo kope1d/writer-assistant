@@ -5,9 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# save() 是 read-modify-write（先读旧 issue_delta 再算增量），
+# 进程内并发保存会互相覆盖/错乱增量，需要串行化。
+_save_lock = threading.Lock()
 
 
 def normalize_review_issues(chapter_id: str, issues: Any) -> list[dict[str, Any]]:
@@ -76,6 +81,10 @@ class ReviewStore:
         )
 
     def save(self, chapter_id: str, result: dict[str, Any]) -> Path:
+        with _save_lock:
+            return self._save_locked(chapter_id, result)
+
+    def _save_locked(self, chapter_id: str, result: dict[str, Any]) -> Path:
         self.review_dir.mkdir(parents=True, exist_ok=True)
         previous = self.load(chapter_id)
         payload = dict(result)
@@ -127,7 +136,7 @@ class ReviewStore:
             / "data"
             / "manuscript"
         )
-        matches = list(manuscript.glob(f"**/{chapter_id}.md"))
+        matches = list(manuscript.glob(f"arc_*/{chapter_id}.md"))
         if len(matches) != 1:
             return ""
         try:

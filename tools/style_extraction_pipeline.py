@@ -636,7 +636,7 @@ if __name__ == "__main__":
             novel_id=args.novel_id,
             source_name=args.source_name,
         )
-        progress = pipeline.load_progress()
+        progress = pipeline.progress
         if progress is None:
             print("未找到提取进度，请先执行 prepare 命令。")
         else:
