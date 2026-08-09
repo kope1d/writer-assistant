@@ -102,6 +102,9 @@ build/
 desktop/backend-dist/
 desktop/release/
 
+# Local embedding model cache
+.fastembed-cache/
+
 # Local worktrees
 .worktrees/
 /reference/

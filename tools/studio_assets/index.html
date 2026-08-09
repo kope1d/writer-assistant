@@ -118,6 +118,7 @@
           </select>
         </div>
         <div id="document-list" class="document-list" role="list"></div>
+        <div id="app-version" class="app-version"></div>
       </aside>
       <button id="mobile-nav-backdrop" class="mobile-nav-backdrop" type="button" aria-label="关闭导航" hidden></button>
       <button id="inspector-backdrop" class="inspector-backdrop" type="button" aria-label="关闭助手背景层" hidden></button>
@@ -1236,6 +1237,11 @@
       <textarea id="write-guidance" rows="6"></textarea>
       <label for="write-words">目标字数</label>
       <input id="write-words" type="number" min="200" max="12000" step="100" value="3000" inputmode="numeric">
+      <label for="write-style">文风档案</label>
+      <select id="write-style">
+        <option value="">默认（当前项目风格）</option>
+      </select>
+      <small id="write-style-help" class="field-help">在参考库中提取过文风后，可在这里直接选用。</small>
       <div class="dialog-actions">
         <button id="write-cancel" class="quiet-button" type="button">取消</button>
         <button id="write-submit" class="primary-button" type="submit">开始写作</button>
@@ -1373,6 +1379,7 @@
         <p class="eyebrow">NOVEL PROJECT</p>
         <h2>打开或创建作品</h2>
       </div>
+      <button id="project-close" class="icon-button" type="button" aria-label="关闭">×</button>
     </div>
     <p class="dialog-note">作品数据应放在独立的私密目录；Writer Assistant 框架仓库只保存程序代码。</p>
     <form id="open-project-form" class="compact-form">

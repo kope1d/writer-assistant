@@ -38,6 +38,12 @@ function writeLocalValue(key, value) {
 
 async function loadWorkspace() {
   state.workspace = await api("/api/workspace");
+  const version = $("#app-version");
+  if (version) {
+    version.textContent = state.workspace?.version
+      ? `Writer Assistant v${state.workspace.version}`
+      : "";
+  }
   renderWorkspace();
   renderRecentProjects();
   document.querySelector("#app").setAttribute("aria-busy", "false");
@@ -1541,7 +1547,29 @@ async function openSmartWriteDialog(chapterId = "") {
   $("#write-outline-revision").value = state.outline.revision;
   $("#write-guidance").value = recommendation.guidance;
   $("#write-words").value = String(recommendation.target_words);
+  loadStyleVault();
   $("#write-dialog").showModal();
+}
+
+async function loadStyleVault() {
+  const select = $("#write-style");
+  if (!select) return;
+  let payload;
+  try {
+    payload = await api("/api/style-vault");
+  } catch (_) {
+    return;
+  }
+  const current = payload?.current || "";
+  select.innerHTML = '<option value="">默认（当前项目风格）</option>';
+  (payload?.profiles || []).forEach((profile) => {
+    if (!profile.ready) return;
+    const option = document.createElement("option");
+    option.value = profile.id;
+    option.textContent = profile.label + (profile.description ? ` · ${profile.description}` : "");
+    if (profile.id === current) option.selected = true;
+    select.appendChild(option);
+  });
 }
 
 function documentGroup(path) {
@@ -5506,6 +5534,7 @@ async function runWriter(event) {
         outline_revision: $("#write-outline-revision").value,
         guidance: $("#write-guidance").value,
         target_words: Number($("#write-words").value),
+        style_id: $("#write-style").value,
       },
       {
         label: "章节写作任务已加入队列",
@@ -5990,6 +6019,7 @@ function bindEvents() {
   $("#product-tour-back").addEventListener("click", goToPreviousProductTourStep);
   $("#product-tour-next").addEventListener("click", advanceProductTourManually);
   $("#search-form").addEventListener("submit", searchProject);
+  $("#project-close").addEventListener("click", () => $("#project-dialog").close());
   $("#project-dialog").addEventListener("cancel", (event) => {
     if (!state.workspace?.initialized) event.preventDefault();
   });
@@ -6189,6 +6219,11 @@ function bindEvents() {
     }
     if (event.key === "Escape") {
       if (closeOpenToolHelp(true)) return;
+      const openDialog = document.querySelector("dialog[open]");
+      if (openDialog) {
+        openDialog.close();
+        return;
+      }
       if (state.editorFocusMode) {
         toggleEditorFocusMode(false);
         return;

@@ -783,6 +783,43 @@ def test_studio_searches_project_assets(tmp_path: Path):
     assert result["results"][0]["path"] == "src/story/background.md"
 
 
+def test_studio_style_vault_and_write_style_passthrough(tmp_path: Path):
+    init_project(tmp_path, "demo")
+    novel = tmp_path / "data" / "novels" / "demo"
+    (novel / "src" / "outline.md").write_text(
+        "# 第一卷\n## 第一幕\n### 第一节\n#### 第一章：开门\n脚印。\n",
+        encoding="utf-8",
+    )
+    style_dir = novel / "data" / "sources" / "lu_xun_style" / "style"
+    style_dir.mkdir(parents=True)
+    (style_dir / "summary.md").write_text("# 冷峻白描\n\n短句、留白。\n", encoding="utf-8")
+
+    calls = []
+
+    def fake_writer(root: Path, args: dict) -> dict:
+        calls.append(args)
+        return {"ok": True, "chapter_id": args["chapter_id"], "word_count": 100}
+
+    app = StudioApplication(tmp_path, writer_executor=fake_writer)
+    vault = app.style_vault()
+
+    assert vault["current"] == "demo"
+    by_id = {profile["id"]: profile for profile in vault["profiles"]}
+    assert by_id["lu_xun_style"]["ready"] is True
+
+    outline = app.outline_structure()
+    app.write_next_chapter(
+        {
+            "chapter_id": "ch_001",
+            "outline_revision": outline["revision"],
+            "style_id": "lu_xun_style",
+            "target_words": 3000,
+        }
+    )
+
+    assert calls[0]["style_id"] == "lu_xun_style"
+
+
 def test_studio_context_preview_exposes_traceable_manifest(tmp_path: Path):
     init_project(tmp_path, "demo")
     app = StudioApplication(tmp_path)

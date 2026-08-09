@@ -6,6 +6,7 @@ import asyncio
 import os
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,20 @@ class EmbeddingRuntime:
 
     def __init__(self, settings: EmbeddingSettings):
         self.settings = settings
+        self._embed_cache: OrderedDict[tuple, Any] = OrderedDict()
+        self._embed_cache_capacity = 512
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    def cache_stats(self) -> dict[str, Any]:
+        total = self._cache_hits + self._cache_misses
+        return {
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate": round(self._cache_hits / total, 4) if total else 0.0,
+            "size": len(self._embed_cache),
+            "capacity": self._embed_cache_capacity,
+        }
 
     async def embed(self, texts: list[str], *, context: str = "document") -> Any:
         clean = [str(text or "") for text in texts]
@@ -94,9 +109,28 @@ class EmbeddingRuntime:
             except ImportError as exc:  # pragma: no cover - dependency contract
                 raise EmbeddingRuntimeError("缺少 numpy，无法生成向量") from exc
             return np.empty((0, self.settings.dimension), dtype=np.float32)
+        cache_key = (
+            self.settings.provider,
+            self.settings.model,
+            self.settings.dimension,
+            context,
+            tuple(clean),
+        )
+        cached = self._embed_cache.get(cache_key)
+        if cached is not None:
+            self._cache_hits += 1
+            self._embed_cache.move_to_end(cache_key)
+            return cached
+        self._cache_misses += 1
         if self.settings.provider == "local":
-            return await asyncio.to_thread(self._embed_local, clean, context)
-        return await self._embed_openai(clean)
+            vectors = await asyncio.to_thread(self._embed_local, clean, context)
+        else:
+            vectors = await self._embed_openai(clean)
+        self._embed_cache[cache_key] = vectors
+        self._embed_cache.move_to_end(cache_key)
+        while len(self._embed_cache) > self._embed_cache_capacity:
+            self._embed_cache.pop(next(iter(self._embed_cache)))
+        return vectors
 
     async def probe(self) -> dict[str, Any]:
         started = time.monotonic()

@@ -1996,6 +1996,16 @@ class StudioApplication:
         except NovelServiceError as exc:
             raise self._translate_service_error(exc) from exc
 
+    def style_vault(self) -> dict[str, Any]:
+        """List extracted style profiles and the project's current selection."""
+        from tools.style_vault import current_style_id, list_style_profiles
+
+        service = self._service()
+        return {
+            "current": current_style_id(service.config),
+            "profiles": list_style_profiles(service.project_root, service.novel_id),
+        }
+
     def manage_foreshadowing(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             result = self._service().manage_foreshadowing(payload)
@@ -2666,6 +2676,7 @@ class StudioApplication:
                         "guidance": guidance,
                         "target_words": target_words,
                         "temperature": float(payload.get("temperature") or 0.7),
+                        "style_id": str(payload.get("style_id") or "").strip(),
                     }
                 )
         except NovelServiceError as exc:

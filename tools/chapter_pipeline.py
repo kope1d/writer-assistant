@@ -1206,7 +1206,9 @@ def execute_review_chapter(project_root: Path, args: dict[str, Any]) -> dict[str
             packet = ChapterAssemblerV2(
                 project_root=project_root,
                 novel_id=novel_id,
-                style_id=str(config.get("style_id") or novel_id),
+                style_id=str(
+                    args.get("style_id") or config.get("style_id") or novel_id
+                ),
             ).assemble(chapter_id)
             generation_context = ContextBuilder(
                 project_root, novel_id
@@ -1393,7 +1395,9 @@ def execute_multi_agent_chapter(
                     LLMClient(llm_config), llm_config.model, str(project_root)
                 ),
                 novel_id=novel_id,
-                style_id=str(config.get("style_id") or novel_id),
+                style_id=str(
+                    args.get("style_id") or config.get("style_id") or novel_id
+                ),
             )
             active_stage = "context_assembly"
             scheduler.start_stage(workflow, active_stage)

@@ -335,3 +335,90 @@ def test_request_context_is_trimmed_at_the_proportional_tier():
 def test_test_module_does_not_depend_on_default_project_registry(tmp_path: Path):
     # This test intentionally has no project setup: LLM routing is process-local.
     assert not (tmp_path / "data").exists()
+
+
+def test_chat_caches_deterministic_identical_requests():
+    backend = FakeLiteLLM()
+    client = LLMClient(
+        LLMConfig(
+            provider="openai",
+            api_key="test",
+            model="cache-model",
+            temperature=0.0,
+        ),
+        client=backend,
+    )
+    messages = [Message("system", "系统提示"), Message("user", "重复请求")]
+
+    first = client.chat(messages, temperature=0.0, stream=False)
+    second = client.chat(messages, temperature=0.0, stream=False)
+
+    assert first.content == second.content == "完成"
+    assert len(backend.completion_calls) == 1
+    stats = client.cache_stats()
+    assert stats["hits"] == 1
+    assert stats["misses"] == 1
+    assert stats["hit_rate"] == 0.5
+
+
+def test_chat_does_not_cache_nonzero_temperature():
+    backend = FakeLiteLLM()
+    client = LLMClient(
+        LLMConfig(provider="openai", api_key="test", model="cache-model"),
+        client=backend,
+    )
+    messages = [Message("user", "同样内容")]
+
+    client.chat(messages, temperature=0.7, stream=False)
+    client.chat(messages, temperature=0.7, stream=False)
+
+    assert len(backend.completion_calls) == 2
+    assert client.cache_stats()["hits"] == 0
+
+
+def test_chat_with_tools_caches_identical_requests():
+    backend = FakeLiteLLM()
+    client = LLMClient(
+        LLMConfig(
+            provider="openai",
+            api_key="test",
+            model="cache-model",
+            temperature=0.0,
+        ),
+        client=backend,
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "lookup", "parameters": {"type": "object", "properties": {}}},
+        }
+    ]
+    messages = [Message("user", "查一下")]
+
+    first = client.chat_with_tools(messages, tools, temperature=0.0)
+    second = client.chat_with_tools(messages, tools, temperature=0.0)
+
+    assert first.content == second.content == "完成"
+    assert len(backend.completion_calls) == 1
+    assert client.cache_stats()["hits"] == 1
+
+
+def test_chat_cache_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("OPENWRITE_LLM_CACHE_DISABLED", "1")
+    backend = FakeLiteLLM()
+    client = LLMClient(
+        LLMConfig(
+            provider="openai",
+            api_key="test",
+            model="cache-model",
+            temperature=0.0,
+        ),
+        client=backend,
+    )
+    messages = [Message("user", "重复")]
+
+    client.chat(messages, temperature=0.0, stream=False)
+    client.chat(messages, temperature=0.0, stream=False)
+
+    assert len(backend.completion_calls) == 2
+    assert client.cache_stats()["enabled"] is False

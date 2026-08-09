@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import logging
 import os
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
@@ -281,6 +283,73 @@ class LLMClient:
             else getattr(self._backend, "completion")
         )
         self.last_context_plan: dict[str, Any] = {}
+        self._chat_cache: OrderedDict[str, Any] = OrderedDict()
+        self._chat_cache_capacity = 128
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._cache_enabled = (
+            os.environ.get("OPENWRITE_LLM_CACHE_DISABLED", "").strip().lower()
+            not in {"1", "true", "yes"}
+        )
+
+    def _chat_cache_key(
+        self,
+        *,
+        messages: list[Message],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> str:
+        payload = {
+            "model": self.config.model,
+            "provider": self.config.provider,
+            "base_url": self.config.base_url,
+            "api_format": self.config.api_format,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "messages": [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                    "tool_call_id": message.tool_call_id,
+                }
+                for message in messages
+            ],
+            "tools": tools,
+        }
+        return hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+    def _cache_get(self, key: str) -> Any | None:
+        if not self._cache_enabled:
+            return None
+        cached = self._chat_cache.get(key)
+        if cached is None:
+            self._cache_misses += 1
+            return None
+        self._cache_hits += 1
+        self._chat_cache.move_to_end(key)
+        return cached
+
+    def _cache_put(self, key: str, value: Any) -> None:
+        if not self._cache_enabled:
+            return
+        self._chat_cache[key] = value
+        self._chat_cache.move_to_end(key)
+        while len(self._chat_cache) > self._chat_cache_capacity:
+            self._chat_cache.pop(next(iter(self._chat_cache)))
+
+    def cache_stats(self) -> dict[str, Any]:
+        total = self._cache_hits + self._cache_misses
+        return {
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate": round(self._cache_hits / total, 4) if total else 0.0,
+            "size": len(self._chat_cache),
+            "capacity": self._chat_cache_capacity,
+            "enabled": self._cache_enabled,
+        }
 
     def chat(
         self,
@@ -293,9 +362,27 @@ class LLMClient:
         """Send one provider-neutral chat request."""
         temp = temperature if temperature is not None else self.config.temperature
         maxt = max_tokens if max_tokens is not None else self.config.max_tokens
+        cacheable = not stream and temp == 0 and on_progress is None
+        cache_key = (
+            self._chat_cache_key(
+                messages=messages,
+                temperature=temp,
+                max_tokens=maxt,
+            )
+            if cacheable
+            else ""
+        )
+        if cache_key:
+            cached = self._cache_get(cache_key)
+            if cached is not None:
+                return cached
         if self.config.api_format == "responses":
-            return self._chat_responses(messages, temp, maxt, stream, on_progress)
-        return self._chat_completion(messages, temp, maxt, stream, on_progress)
+            response = self._chat_responses(messages, temp, maxt, stream, on_progress)
+        else:
+            response = self._chat_completion(messages, temp, maxt, stream, on_progress)
+        if cache_key:
+            self._cache_put(cache_key, response)
+        return response
 
     def chat_with_tools(
         self,
@@ -307,21 +394,33 @@ class LLMClient:
         """Send a normalized function-calling request through LiteLLM."""
         temp = temperature if temperature is not None else self.config.temperature
         maxt = max_tokens if max_tokens is not None else self.config.max_tokens
+        cache_key = self._chat_cache_key(
+            messages=messages,
+            temperature=temp,
+            max_tokens=maxt,
+            tools=tools,
+        )
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
         try:
-            return self._chat_completion_with_tools(messages, tools, temp, maxt)
+            result = self._chat_completion_with_tools(messages, tools, temp, maxt)
         except Exception as exc:
             error_msg = str(exc).lower()
             if "invalid tool type" in error_msg or "tool_calls" in error_msg:
                 logger.warning("Tool calling failed, falling back to regular chat: %s", exc)
                 response = self.chat(messages, temperature=temp, max_tokens=maxt, stream=False)
-                return ToolCallResponse(
+                result = ToolCallResponse(
                     content=response.content,
                     usage=response.usage,
                     model=response.model,
                     provider=response.provider,
                     finish_reason=response.finish_reason,
                 )
-            raise
+            else:
+                raise
+        self._cache_put(cache_key, result)
+        return result
 
     def _chat_completion(
         self,

@@ -158,6 +158,10 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
                 self.app.require_project()
                 self._json(self.app.continuity())
                 return
+            if parsed.path == "/api/style-vault":
+                self.app.require_project()
+                self._json(self.app.style_vault())
+                return
             if parsed.path == "/api/research":
                 self.app.require_project()
                 self._json(studio_success_payload(self.app.research_surface(), self.request_id))
