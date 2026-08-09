@@ -142,7 +142,12 @@ export async function api(path, options = {}) {
     const message = typeof body?.error === "string"
       ? body.error
       : (body?.error?.message || `请求失败 (${response.status})`);
+    const exceptionName = body?.error?.details?.exception;
+    const detailSuffix = exceptionName ? `（${exceptionName}）` : "";
     const error = new Error(message);
+    if (detailSuffix && !message.endsWith(detailSuffix)) {
+      error.message = message + detailSuffix;
+    }
     error.status = response.status;
     error.code = body?.code || body?.error?.code || "HTTP_ERROR";
     error.recoverable = Boolean(body?.recoverable ?? body?.error?.recoverable);

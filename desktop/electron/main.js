@@ -128,10 +128,10 @@ function startBackend() {
       "writer-backend",
       process.platform === "win32" ? "writer-backend.exe" : "writer-backend"
     );
-    args = ["studio", "--port", String(DEFAULT_PORT), "--no-open"];
+    args = ["studio", "--port", String(DEFAULT_PORT), "--no-open", "--debug"];
   } else {
     command = firstExisting(candidatePythons());
-    args = ["-m", "tools.cli", "studio", "--port", String(DEFAULT_PORT), "--no-open"];
+    args = ["-m", "tools.cli", "studio", "--port", String(DEFAULT_PORT), "--no-open", "--debug"];
   }
   const child = spawn(command, args, {
     cwd: ROOT,

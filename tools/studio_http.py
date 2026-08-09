@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
+import traceback
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -384,12 +385,13 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
         self._json(studio_error_payload(error, self.request_id), status=error.status)
 
     def _handle_internal_error(self, error: Exception) -> None:
+        traceback.print_exc()
         self._debug_http_error(
             HTTPStatus.INTERNAL_SERVER_ERROR,
-            error.__class__.__name__,
+            f"{error.__class__.__name__}: {error}",
         )
         self._json(
-            internal_error_payload(self.request_id),
+            internal_error_payload(self.request_id, exception=error),
             status=HTTPStatus.INTERNAL_SERVER_ERROR,
         )
 

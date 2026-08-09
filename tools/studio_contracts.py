@@ -70,11 +70,21 @@ def studio_error_payload(error: StudioError, request_id: str) -> dict[str, Any]:
     }
 
 
-def internal_error_payload(request_id: str) -> dict[str, Any]:
+def internal_error_payload(
+    request_id: str,
+    *,
+    exception: Exception | None = None,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {}
+    if exception is not None:
+        from tools.llm.response import redact_sensitive_text
+
+        details["exception"] = exception.__class__.__name__
+        details["message"] = redact_sensitive_text(str(exception) or "")[:300]
     return {
         "error": "Studio 内部错误",
         "code": "INTERNAL_ERROR",
         "recoverable": False,
-        "details": {},
+        "details": details,
         "request_id": request_id,
     }
