@@ -1,15 +1,14 @@
 @echo off
 setlocal EnableExtensions
-chcp 65001 >nul
 cd /d "%~dp0"
 
-rem Electron 桌面客户端优先：无需本地 Python 探测
+rem Electron desktop client takes priority; no Python probing needed here
 if exist "%~dp0desktop\node_modules\electron\dist\electron.exe" (
   start "" "%~dp0desktop\node_modules\electron\dist\electron.exe" "%~dp0desktop"
   exit /b 0
 )
 
-rem 回退：内置桌面窗口（Python 探测全程静默）
+rem Fallback: built-in desktop window (silent Python probing)
 set "WA_PYTHON="
 set "WA_PY_VERSION="
 
@@ -34,9 +33,9 @@ if not errorlevel 1 (
 )
 if defined WA_PYTHON goto :launch
 
-echo [Writer Assistant] 未找到 Python 3.10 或更高版本。
-echo 请先从 https://www.python.org/downloads/windows/ 安装 Python，
-echo 安装时勾选 "Add Python to PATH"，然后再次双击此文件。
+echo [Writer Assistant] Python 3.10+ was not found.
+echo Install Python from https://www.python.org/downloads/windows/
+echo and tick "Add Python to PATH", then run this file again.
 echo.
 pause
 exit /b 2
@@ -71,7 +70,7 @@ if "%WA_PYTHON%"=="py" (
 set "WA_STATUS=%ERRORLEVEL%"
 if not "%WA_STATUS%"=="0" (
   echo.
-  echo 启动未完成。
+  echo Launch failed.
   pause
 )
 exit /b %WA_STATUS%

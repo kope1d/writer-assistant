@@ -1,10 +1,9 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
 
 if not exist "%~dp0desktop\node_modules\electron\dist\electron.exe" (
-  echo [Writer Assistant] 未找到 Electron 桌面客户端。
-  echo 请先进入 desktop 目录运行：npm install
+  echo [Writer Assistant] Electron client not found.
+  echo Run "npm install" inside the desktop folder first.
   pause
   exit /b 1
 )
