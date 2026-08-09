@@ -97,6 +97,11 @@ data/novels/*/data/test_outputs/
 .pytest-run*/
 pytest-*.log
 
+# Packaging outputs
+build/
+desktop/backend-dist/
+desktop/release/
+
 # Local worktrees
 .worktrees/
 /reference/

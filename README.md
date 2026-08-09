@@ -57,6 +57,16 @@ npm install
 
 未安装 Electron 客户端时，双击启动器会自动退回内置桌面窗口，不会中断。
 
+### 安装版（Windows）
+
+也可以直接从 GitHub Releases 下载 `Writer Assistant Setup 0.1.0.exe` 安装：
+安装后桌面上会出现 Writer Assistant 快捷方式，双击即可打开独立桌面应用，
+不需要安装 Python 或 Node。
+
+桌面客户端每次启动会检查 GitHub Releases 是否有新版本并自动更新；
+如果你的仓库是私有的，需要在系统环境变量中配置 `GH_TOKEN`（具有 repo 权限），
+公开仓库则无需配置。
+
 从源码运行：
 
 ```bash

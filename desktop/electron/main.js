@@ -5,6 +5,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
+const { autoUpdater } = require("electron-updater");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const DEFAULT_PORT = 4567;
@@ -82,16 +83,21 @@ function waitForHealth(url, timeoutMs, intervalMs) {
 let backend = null;
 
 function startBackend() {
-  const python = firstExisting(candidatePythons());
-  const args = [
-    "-m",
-    "tools.cli",
-    "studio",
-    "--port",
-    String(DEFAULT_PORT),
-    "--no-open",
-  ];
-  const child = spawn(python, args, {
+  let command;
+  let args;
+  if (app.isPackaged) {
+    command = path.join(
+      process.resourcesPath,
+      "backend",
+      "writer-backend",
+      process.platform === "win32" ? "writer-backend.exe" : "writer-backend"
+    );
+    args = ["studio", "--port", String(DEFAULT_PORT), "--no-open"];
+  } else {
+    command = firstExisting(candidatePythons());
+    args = ["-m", "tools.cli", "studio", "--port", String(DEFAULT_PORT), "--no-open"];
+  }
+  const child = spawn(command, args, {
     cwd: ROOT,
     windowsHide: true,
     stdio: "ignore",
@@ -143,6 +149,12 @@ app.whenReady().then(async () => {
   });
   win.on("maximize", () => win.webContents.send("window-maximized-changed", true));
   win.on("unmaximize", () => win.webContents.send("window-maximized-changed", false));
+
+  if (app.isPackaged) {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  }
 });
 
 ipcMain.on("window-minimize", (event) => {

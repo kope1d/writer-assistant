@@ -12,7 +12,11 @@
   },
   "author": "kope1d",
   "license": "Apache-2.0",
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
   "devDependencies": {
-    "electron": "^43.3.0"
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
   }
 }

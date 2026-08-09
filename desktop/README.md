@@ -17,3 +17,16 @@ Windows 下也可以直接双击仓库根目录的 `启动 Writer Assistant.bat`
 
 - 引擎端口默认 `4567`，仅绑定本机回环地址。
 - 关闭窗口后，Electron 会自动结束它启动的 Python 引擎进程。
+
+## 打包与发布
+
+```bash
+# 1) 先用 PyInstaller 打包 Python 引擎（见 packaging/README.md）
+# 2) 构建 Windows 安装包
+npm run dist
+# 3) 发布到 GitHub Releases（自动更新渠道）
+gh release create v0.1.0 \
+  "release/Writer Assistant Setup 0.1.0.exe" \
+  "release/latest.yml" \
+  --title "Writer Assistant 0.1.0"
+```

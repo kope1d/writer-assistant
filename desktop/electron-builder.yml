@@ -11,6 +11,8 @@ extraResources:
     to: assets
     filter:
       - icon.png
+  - from: backend-dist/writer-backend
+    to: backend/writer-backend
 win:
   icon: build/icon.ico
   target:
