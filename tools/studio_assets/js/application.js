@@ -6309,4 +6309,9 @@ start();
       }
     });
   }
+  if (bridge.onWindowFocus) {
+    bridge.onWindowFocus((focused) => {
+      document.body.classList.toggle("window-unfocused", !focused);
+    });
+  }
 })();

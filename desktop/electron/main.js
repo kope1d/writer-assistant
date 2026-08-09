@@ -81,6 +81,42 @@ function waitForHealth(url, timeoutMs, intervalMs) {
 }
 
 let backend = null;
+let mainWindow = null;
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+    }
+  });
+}
+
+function windowStateFile() {
+  return path.join(app.getPath("userData"), "window-state.json");
+}
+
+function loadWindowState() {
+  try {
+    const state = JSON.parse(fs.readFileSync(windowStateFile(), "utf8"));
+    if (typeof state.width === "number" && typeof state.height === "number") {
+      return {
+        width: state.width,
+        height: state.height,
+        x: state.x,
+        y: state.y,
+      };
+    }
+  } catch (_) {
+    // First run or unreadable state: use defaults.
+  }
+  return null;
+}
 
 function startBackend() {
   let command;
@@ -120,9 +156,12 @@ app.whenReady().then(async () => {
     return;
   }
 
+  const saved = loadWindowState();
   const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: saved?.width ?? 1440,
+    height: saved?.height ?? 900,
+    x: saved?.x,
+    y: saved?.y,
     minWidth: 1100,
     minHeight: 700,
     title: "Writer Assistant",
@@ -137,6 +176,7 @@ app.whenReady().then(async () => {
       preload: path.join(__dirname, "preload.js"),
     },
   });
+  mainWindow = win;
 
   win.once("ready-to-show", () => {
     win.show();
@@ -149,6 +189,17 @@ app.whenReady().then(async () => {
   });
   win.on("maximize", () => win.webContents.send("window-maximized-changed", true));
   win.on("unmaximize", () => win.webContents.send("window-maximized-changed", false));
+  win.on("focus", () => win.webContents.send("window-focus-changed", true));
+  win.on("blur", () => win.webContents.send("window-focus-changed", false));
+  win.on("close", () => {
+    if (!win.isMaximized() && !win.isFullScreen()) {
+      try {
+        fs.writeFileSync(windowStateFile(), JSON.stringify(win.getBounds()));
+      } catch (_) {
+        // Best-effort window state persistence.
+      }
+    }
+  });
 
   if (app.isPackaged) {
     autoUpdater.autoDownload = true;

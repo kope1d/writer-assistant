@@ -12,4 +12,9 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       callback(maximized);
     });
   },
+  onWindowFocus: (callback) => {
+    ipcRenderer.on("window-focus-changed", (_event, focused) => {
+      callback(focused);
+    });
+  },
 });
