@@ -48,6 +48,10 @@ if not errorlevel 1 (
 exit /b 0
 
 :launch
+if exist "%~dp0desktop\node_modules\electron\dist\electron.exe" (
+  start "" "%~dp0desktop\node_modules\electron\dist\electron.exe" "%~dp0desktop"
+  exit /b 0
+)
 if "%OPENWRITE_PYTHON%"=="py" (
   if exist "%~dp0tools\desktop_launcher.py" (
     py %OPENWRITE_PY_VERSION% -u "%~dp0tools\desktop_launcher.py" --desktop %*

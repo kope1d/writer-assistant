@@ -30,6 +30,11 @@ if [[ -z "$PYTHON_BIN" ]]; then
   exit 2
 fi
 
+if [[ -x "$ROOT_DIR/desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron" ]]; then
+  "$ROOT_DIR/desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron" "$ROOT_DIR/desktop" &
+  exit 0
+fi
+
 if [[ -f "$ROOT_DIR/tools/desktop_launcher.py" ]]; then
   "$PYTHON_BIN" -u "$ROOT_DIR/tools/desktop_launcher.py" --desktop "$@"
 else

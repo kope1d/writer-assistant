@@ -1,0 +1,16 @@
+{
+  "name": "writer-assistant-desktop",
+  "productName": "Writer Assistant",
+  "version": "0.1.0",
+  "description": "Writer Assistant 独立桌面客户端",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "kope1d",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "electron": "^43.3.0"
+  }
+}
