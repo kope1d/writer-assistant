@@ -115,6 +115,7 @@ app.whenReady().then(async () => {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
+    show: false,
     title: "Writer Assistant",
     autoHideMenuBar: true,
     backgroundColor: "#0f172a",
@@ -125,6 +126,10 @@ app.whenReady().then(async () => {
     },
   });
 
+  win.once("ready-to-show", () => {
+    win.show();
+    win.focus();
+  });
   win.loadURL(url);
   win.webContents.setWindowOpenHandler(({ url: target }) => {
     shell.openExternal(target);
