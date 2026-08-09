@@ -6,7 +6,9 @@
   "main": "electron/main.js",
   "private": true,
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis"
   },
   "author": "kope1d",
   "license": "Apache-2.0",

@@ -1,0 +1,29 @@
+appId: com.writerassistant.app
+productName: Writer Assistant
+directories:
+  buildResources: build
+  output: release
+files:
+  - electron/**
+  - package.json
+extraResources:
+  - from: ../assets
+    to: assets
+    filter:
+      - icon.png
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Writer Assistant
+publish:
+  provider: github
+  owner: kope1d
+  repo: writer-assistant
+  private: true

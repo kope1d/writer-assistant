@@ -9,6 +9,10 @@ const http = require("http");
 const ROOT = path.resolve(__dirname, "..", "..");
 const DEFAULT_PORT = 4567;
 
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.writerassistant.app");
+}
+
 function candidatePythons() {
   const candidates = [];
   const venv = path.join(ROOT, ".venv");
@@ -119,6 +123,7 @@ app.whenReady().then(async () => {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: "#0f172a",
+    icon: path.join(ROOT, "assets", "icon.png"),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
