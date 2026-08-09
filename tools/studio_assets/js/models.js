@@ -548,12 +548,60 @@ function switchTab(tab) {
 function applyPreset() {
   const preset = presetCatalog()[$("#model-preset").value];
   if (!preset) return;
+  const isNew = !selectedProfile()?.id;
+  if (isNew) {
+    const id = slugProfileId(preset.id);
+    $("#model-profile-id").value = id;
+    $("#model-profile-id").readOnly = false;
+    $("#model-profile-label").value = preset.label || preset.model || "";
+  }
   $("#model-base-url").value = preset.base_url;
   $("#model-name").value = preset.model;
   $("#model-api-format").value = preset.api_format;
   $("#model-context-tokens").value = String(preset.context_tokens);
   $("#model-max-tokens").value = String(preset.max_tokens);
+  $("#model-temperature").value = "0.7";
+  $("#model-timeout").value = "120";
   renderPresetHelp(preset);
+
+  const embedding = embeddingDefaultsForPreset(preset);
+  $("#model-embedding-provider").value = embedding.provider;
+  $("#model-embedding-base-url").value = embedding.base_url;
+  $("#model-embedding-name").value = embedding.model;
+  $("#model-embedding-dimension").value = String(embedding.dimension);
+  $("#model-embedding-max-tokens").value = String(embedding.maxTokens);
+  $("#model-search-mode").value = "vector";
+  updateEmbeddingFields(false);
+  syncEmbeddingPreset();
+}
+
+function slugProfileId(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "");
+}
+
+function embeddingDefaultsForPreset(preset) {
+  const family = String(preset?.family || "");
+  const cloudEmbeddingFamilies = ["OpenAI · GPT-5.6", "Google · Gemini"];
+  if (cloudEmbeddingFamilies.includes(family)) {
+    return {
+      provider: "openai",
+      base_url: "",
+      model: "text-embedding-3-small",
+      dimension: 1536,
+      maxTokens: 8192,
+    };
+  }
+  return {
+    provider: "local",
+    base_url: "",
+    model: "BAAI/bge-small-zh-v1.5",
+    dimension: 512,
+    maxTokens: 512,
+  };
 }
 
 function toggleKey() {
