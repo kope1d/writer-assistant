@@ -43,7 +43,7 @@ Markdown / TXT / EPUB
 
 ## 快速开始
 
-推荐直接双击根目录启动文件：
+推荐直接双击根目录启动文件（会打开**独立桌面窗口**，使用系统原生 WebView，无需浏览器标签页）：
 
 - Windows：`启动 Writer Assistant.bat`
 - macOS：`启动 Writer Assistant.command`
@@ -117,6 +117,7 @@ data/novels/{novel_id}/
 
 ```bash
 writer studio
+writer desktop
 writer status
 writer write ch_005
 writer review ch_005

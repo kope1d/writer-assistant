@@ -375,6 +375,7 @@ def select_port(preferred: int) -> tuple[int, bool]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Writer Assistant 一键启动器")
     parser.add_argument("--check-only", action="store_true", help="只检查环境，不启动 Studio")
+    parser.add_argument("--desktop", action="store_true", help="以独立桌面窗口打开（默认使用浏览器）")
     parser.add_argument("--debug", action="store_true", help="启用 Studio debug 日志")
     parser.add_argument("--project", help="直接打开指定作品目录")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="首选端口")
@@ -417,7 +418,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             python,
             "-m",
             "tools.cli",
-            "studio",
+            "desktop" if args.desktop else "studio",
             "--port",
             str(port),
         ]

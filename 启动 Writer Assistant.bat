@@ -50,15 +50,15 @@ exit /b 0
 :launch
 if "%OPENWRITE_PYTHON%"=="py" (
   if exist "%~dp0tools\desktop_launcher.py" (
-    py %OPENWRITE_PY_VERSION% -u "%~dp0tools\desktop_launcher.py" %*
+    py %OPENWRITE_PY_VERSION% -u "%~dp0tools\desktop_launcher.py" --desktop %*
   ) else (
-    py %OPENWRITE_PY_VERSION% -u -m tools.desktop_launcher %*
+    py %OPENWRITE_PY_VERSION% -u -m tools.desktop_launcher --desktop %*
   )
 ) else (
   if exist "%~dp0tools\desktop_launcher.py" (
-    "%OPENWRITE_PYTHON%" -u "%~dp0tools\desktop_launcher.py" %*
+    "%OPENWRITE_PYTHON%" -u "%~dp0tools\desktop_launcher.py" --desktop %*
   ) else (
-    "%OPENWRITE_PYTHON%" -u -m tools.desktop_launcher %*
+    "%OPENWRITE_PYTHON%" -u -m tools.desktop_launcher --desktop %*
   )
 )
 set "OPENWRITE_STATUS=%ERRORLEVEL%"

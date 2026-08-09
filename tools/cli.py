@@ -83,6 +83,7 @@ def main():
     _add_asset_command(subparsers)
     _add_desk_command(subparsers)
     _add_studio_command(subparsers)
+    _add_desktop_command(subparsers)
     _add_doctor_command(subparsers)
     _add_agent_command(subparsers)
     _add_project_arguments(subparsers)
@@ -109,7 +110,7 @@ def _dispatch(args) -> int:
     """Resolve an optional project root, then dispatch one CLI command."""
 
     raw_project = str(getattr(args, "project", "") or "").strip()
-    if not raw_project or args.command == "studio":
+    if not raw_project or args.command in {"studio", "desktop"}:
         return _dispatch_in_project(args)
 
     project_root = Path(raw_project).expanduser().resolve()
@@ -185,6 +186,8 @@ def _dispatch_in_project(args) -> int:
         return _cmd_desk(args)
     elif args.command == "studio":
         return _cmd_studio(args)
+    elif args.command == "desktop":
+        return _cmd_desktop(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
     elif args.command == "agent":
@@ -659,6 +662,14 @@ def _add_studio_command(subparsers):
     p = subparsers.add_parser("studio", help="启动本地 Web 小说工作台")
     p.add_argument("--port", "-p", type=int, default=4567, help="监听端口（默认 4567）")
     p.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    p.add_argument("--project", help="作品项目目录；可与框架代码目录分离")
+    p.add_argument("--debug", action="store_true", help="启用 Studio 后台 debug 日志")
+
+
+def _add_desktop_command(subparsers):
+    """desktop 命令 - 独立桌面窗口工作台。"""
+    p = subparsers.add_parser("desktop", help="以独立桌面窗口打开工作台")
+    p.add_argument("--port", "-p", type=int, default=4567, help="监听端口（默认 4567）")
     p.add_argument("--project", help="作品项目目录；可与框架代码目录分离")
     p.add_argument("--debug", action="store_true", help="启用 Studio 后台 debug 日志")
 
@@ -1757,6 +1768,25 @@ def _cmd_studio(args) -> int:
         )
     except (OSError, StudioError) as exc:
         logger.error(f"Studio 启动失败: {exc}")
+        return 1
+
+
+def _cmd_desktop(args) -> int:
+    """以独立桌面窗口启动 Studio。"""
+    from tools.desktop_app import run_desktop
+    from tools.studio import StudioError
+
+    if not 0 <= args.port <= 65535:
+        logger.error("端口必须在 0 到 65535 之间")
+        return 1
+    try:
+        return run_desktop(
+            Path(args.project).expanduser() if args.project else Path.cwd(),
+            port=args.port,
+            debug=bool(args.debug),
+        )
+    except (OSError, StudioError) as exc:
+        logger.error(f"桌面工作台启动失败: {exc}")
         return 1
 
 

@@ -17,6 +17,7 @@ dependencies = [
     "litellm>=1.82.6,<1.83",
     "markdown-it-py>=3.0",
     "prompt_toolkit>=3.0",
+    "pywebview>=5.0",
     "lightrag-hku>=1.5.5,<2.0",
     "fastembed>=0.7.0,<1.0",
     "tomli>=2.0; python_version < '3.11'",

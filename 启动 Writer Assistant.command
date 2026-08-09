@@ -31,9 +31,9 @@ if [[ -z "$PYTHON_BIN" ]]; then
 fi
 
 if [[ -f "$ROOT_DIR/tools/desktop_launcher.py" ]]; then
-  "$PYTHON_BIN" -u "$ROOT_DIR/tools/desktop_launcher.py" "$@"
+  "$PYTHON_BIN" -u "$ROOT_DIR/tools/desktop_launcher.py" --desktop "$@"
 else
-  "$PYTHON_BIN" -u -m tools.desktop_launcher "$@"
+  "$PYTHON_BIN" -u -m tools.desktop_launcher --desktop "$@"
 fi
 launch_status=$?
 if [[ $launch_status -ne 0 ]]; then
