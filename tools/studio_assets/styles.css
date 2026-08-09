@@ -142,6 +142,78 @@ select:focus-visible {
   transform: translateY(0);
 }
 
+/* Desktop window chrome (Electron) */
+.desktop-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 0 8px 0 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.desktop-titlebar[hidden] {
+  display: none;
+}
+
+.desktop-titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.desktop-titlebar-mark {
+  width: 18px;
+  height: 18px;
+  stroke: var(--accent);
+}
+
+.desktop-titlebar-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-titlebar-controls button {
+  width: 38px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.desktop-titlebar-controls button:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.desktop-titlebar-controls #titlebar-close:hover {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+body.is-desktop {
+  display: flex;
+  flex-direction: column;
+}
+
+body.is-desktop #app {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
 .app {
   width: 100%;
   height: 100%;

@@ -6272,3 +6272,35 @@ async function start() {
 }
 
 start();
+
+(function initDesktopWindowChrome() {
+  const bridge = window.desktopBridge;
+  if (!bridge) {
+    return;
+  }
+  document.body.classList.add("is-desktop");
+  const titlebar = document.getElementById("desktop-titlebar");
+  if (titlebar) {
+    titlebar.hidden = false;
+  }
+  const button = (id) => document.getElementById(id);
+  const minimize = button("titlebar-minimize");
+  const maximize = button("titlebar-maximize");
+  const close = button("titlebar-close");
+  if (minimize) {
+    minimize.addEventListener("click", () => bridge.minimize());
+  }
+  if (maximize) {
+    maximize.addEventListener("click", () => bridge.toggleMaximize());
+  }
+  if (close) {
+    close.addEventListener("click", () => bridge.close());
+  }
+  if (bridge.onMaximizedChange) {
+    bridge.onMaximizedChange((maximized) => {
+      if (maximize) {
+        maximize.classList.toggle("is-maximized", maximized);
+      }
+    });
+  }
+})();

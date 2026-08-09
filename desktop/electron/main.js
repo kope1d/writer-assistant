@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -115,14 +115,15 @@ app.whenReady().then(async () => {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    show: false,
     title: "Writer Assistant",
+    frame: false,
     autoHideMenuBar: true,
     backgroundColor: "#0f172a",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -135,6 +136,26 @@ app.whenReady().then(async () => {
     shell.openExternal(target);
     return { action: "deny" };
   });
+  win.on("maximize", () => win.webContents.send("window-maximized-changed", true));
+  win.on("unmaximize", () => win.webContents.send("window-maximized-changed", false));
+});
+
+ipcMain.on("window-minimize", (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
+});
+
+ipcMain.on("window-maximize-toggle", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  if (win.isMaximized()) {
+    win.unmaximize();
+  } else {
+    win.maximize();
+  }
+});
+
+ipcMain.on("window-close", (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
 });
 
 app.on("window-all-closed", () => {
