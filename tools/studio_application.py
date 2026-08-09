@@ -1728,13 +1728,17 @@ class StudioApplication:
             timeout_seconds=30,
             max_retries=0,
         )
-        response = LLMClient(config).chat(
-            [Message("user", "这是连接测试。请只回复 OK。")],
-            temperature=0,
-            max_tokens=32,
-            stream=False,
-        )
-        reply = response.content.strip()
+        reply = ""
+        for _ in range(2):
+            response = LLMClient(config).chat(
+                [Message("user", "这是连接测试。请只回复 OK。")],
+                temperature=0,
+                max_tokens=256,
+                stream=False,
+            )
+            reply = response.content.strip()
+            if reply:
+                break
         if not reply:
             raise RuntimeError("empty model reply")
         return {"reply": reply}

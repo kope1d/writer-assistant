@@ -1190,6 +1190,7 @@ def test_studio_default_model_connection_test_allows_reasoning_budget(
     monkeypatch: pytest.MonkeyPatch,
 ):
     captured: dict[str, int] = {}
+    attempts = {"n": 0}
 
     class FakeClient:
         def __init__(self, config):
@@ -1197,7 +1198,8 @@ def test_studio_default_model_connection_test_allows_reasoning_budget(
 
         def chat(self, messages, temperature, max_tokens, stream):
             captured["max_tokens"] = max_tokens
-            return SimpleNamespace(content="OK")
+            attempts["n"] += 1
+            return SimpleNamespace(content="OK" if attempts["n"] >= 2 else "")
 
     monkeypatch.setattr("tools.llm.LLMClient", FakeClient)
 
@@ -1213,7 +1215,8 @@ def test_studio_default_model_connection_test_allows_reasoning_budget(
     )
 
     assert result == {"reply": "OK"}
-    assert captured["max_tokens"] == 32
+    assert captured["max_tokens"] == 256
+    assert attempts["n"] == 2
 
 
 def test_studio_empty_model_connection_reply_gets_actionable_error():
