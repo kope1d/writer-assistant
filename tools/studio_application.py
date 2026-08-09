@@ -3716,15 +3716,26 @@ class StudioApplication:
         data = ReviewStore(self.project_root, self.novel_id).load(chapter_id)
         if data is None:
             return None
+        raw_issues = data.get("issues")
+        if isinstance(raw_issues, list):
+            issue_count = len(raw_issues)
+            fallback_details = raw_issues
+        elif isinstance(raw_issues, int):
+            issue_count = raw_issues
+            fallback_details = []
+        else:
+            issue_count = int(raw_issues or 0)
+            fallback_details = []
+        raw_details = data.get("issue_details")
+        if not isinstance(raw_details, list):
+            raw_details = fallback_details
         return {
             "score": float(data.get("score") or 0),
             "passed": bool(data.get("passed")),
-            "issues": int(data.get("issues") or 0),
+            "issues": issue_count,
             "reviewed_at": str(data.get("reviewed_at") or ""),
             "stale": bool(data.get("stale")),
-            "issue_details": normalize_review_issues(
-                chapter_id, data.get("issue_details", [])
-            ),
+            "issue_details": normalize_review_issues(chapter_id, raw_details),
             "issue_delta": (
                 data.get("issue_delta")
                 if isinstance(data.get("issue_delta"), dict)

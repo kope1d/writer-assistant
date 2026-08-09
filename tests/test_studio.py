@@ -831,6 +831,29 @@ def test_studio_style_vault_and_write_style_passthrough(tmp_path: Path):
     assert config["style_id"] == "lu_xun_style"
 
 
+def test_studio_workspace_handles_review_issues_list(tmp_path: Path):
+    init_project(tmp_path, "demo")
+    from tools.review_store import ReviewStore
+
+    ReviewStore(tmp_path, "demo").save(
+        "ch_001",
+        {
+            "score": 88,
+            "passed": True,
+            "issues": [{"dimension": "continuity", "severity": "low"}],
+            "reviewed_at": "2026-08-09T00:00:00Z",
+        },
+    )
+
+    app = StudioApplication(tmp_path)
+    summary = app._load_review_result("ch_001")
+
+    assert summary is not None
+    assert summary["issues"] == 1
+    assert summary["score"] == 88.0
+    assert summary["passed"] is True
+
+
 def test_studio_context_preview_exposes_traceable_manifest(tmp_path: Path):
     init_project(tmp_path, "demo")
     app = StudioApplication(tmp_path)
