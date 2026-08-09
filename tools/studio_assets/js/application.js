@@ -6282,6 +6282,12 @@ start();
   const titlebar = document.getElementById("desktop-titlebar");
   if (titlebar) {
     titlebar.hidden = false;
+    titlebar.addEventListener("dblclick", (event) => {
+      if (event.target.closest("button")) {
+        return;
+      }
+      bridge.toggleMaximize();
+    });
   }
   const button = (id) => document.getElementById(id);
   const minimize = button("titlebar-minimize");
