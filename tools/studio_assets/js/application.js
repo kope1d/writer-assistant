@@ -41,7 +41,7 @@ async function loadWorkspace() {
   const version = $("#app-version");
   if (version) {
     version.textContent = state.workspace?.version
-      ? `Writer Assistant v${state.workspace.version}`
+      ? "Writer Assistant v" + state.workspace.version
       : "";
   }
   renderWorkspace();
@@ -672,6 +672,7 @@ function setView(view, pushHistory = true) {
   $("#continuity-view").hidden = view !== "continuity";
   $("#transfer-view").hidden = view !== "transfer";
   $("#deconstruct-view").hidden = view !== "deconstruct";
+  $("#style-vault-view").hidden = view !== "style-vault";
   $("#skills-view").hidden = view !== "skills";
   $("#tools-view").hidden = view !== "tools";
   renderDocumentList(documentListGroupForView(view));
@@ -694,6 +695,7 @@ function setView(view, pushHistory = true) {
   if (outlineView) loadOutline();
   if (view === "agents") loadAgentSurface(state.agent);
   if (view === "continuity") loadContinuity();
+  if (view === "style-vault") loadStyleVaultView();
   if (researchView) loadResearch();
   if (reviewView) renderReviewWorkspace();
   updateRoutedModelIndicator();
@@ -1561,15 +1563,160 @@ async function loadStyleVault() {
     return;
   }
   const current = payload?.current || "";
-  select.innerHTML = '<option value="">默认（当前项目风格）</option>';
+  select.replaceChildren();
+  const fallback = document.createElement("option");
+  fallback.value = "";
+  fallback.textContent = "默认（当前项目风格）";
+  select.append(fallback);
   (payload?.profiles || []).forEach((profile) => {
     if (!profile.ready) return;
     const option = document.createElement("option");
     option.value = profile.id;
-    option.textContent = profile.label + (profile.description ? ` · ${profile.description}` : "");
+    option.textContent = profile.label + (profile.description ? " · " + profile.description : "");
     if (profile.id === current) option.selected = true;
     select.appendChild(option);
   });
+}
+
+function slugifyStyleName(value) {
+  const slug = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "");
+  return slug || `style_${Date.now().toString(36)}`;
+}
+
+function renderStyleVault(payload) {
+  const root = $("#style-vault-list");
+  root.replaceChildren();
+  const profiles = payload?.profiles || [];
+  if (!profiles.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "还没有文风档案。上传一部作品文本，提炼完成后会出现在这里。";
+    root.append(empty);
+    return;
+  }
+  profiles.forEach((profile) => {
+    const card = document.createElement("article");
+    card.className = "style-vault-card";
+    const head = document.createElement("div");
+    head.className = "style-vault-card-head";
+    const title = document.createElement("strong");
+    title.textContent = profile.label;
+    head.append(title);
+    if (profile.id === payload.current) {
+      const current = document.createElement("span");
+      current.className = "status-badge ready";
+      current.textContent = "当前默认";
+      head.append(current);
+    }
+    const ready = document.createElement("span");
+    ready.className = profile.ready ? "status-badge ready" : "status-badge";
+    ready.textContent = profile.ready ? "已就绪" : "未完成";
+    head.append(ready);
+    card.append(head);
+    if (profile.description) {
+      const description = document.createElement("p");
+      description.className = "style-vault-card-description";
+      description.textContent = profile.description;
+      card.append(description);
+    }
+    if (profile.ready && profile.id !== payload.current) {
+      const actions = document.createElement("div");
+      actions.className = "style-vault-card-actions";
+      const select = document.createElement("button");
+      select.type = "button";
+      select.className = "quiet-button";
+      select.dataset.selectStyle = profile.id;
+      select.textContent = "设为默认文风";
+      actions.append(select);
+      card.append(actions);
+    }
+    root.append(card);
+  });
+}
+
+async function loadStyleVaultView() {
+  if (!state.workspace?.initialized) return;
+  try {
+    const payload = await api("/api/style-vault");
+    renderStyleVault(payload);
+  } catch (error) {
+    const root = $("#style-vault-list");
+    root.replaceChildren();
+    const message = document.createElement("p");
+    message.className = "empty-state";
+    message.textContent = error.message;
+    root.append(message);
+  }
+}
+
+async function importStyleVault(event) {
+  event.preventDefault();
+  const fileInput = $("#style-vault-file");
+  const nameInput = $("#style-vault-name");
+  const submit = $("#style-vault-import-submit");
+  const status = $("#style-vault-status");
+  const file = fileInput.files?.[0];
+  if (!file) {
+    status.textContent = "请先选择作品文本文件。";
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    status.textContent = "文件过大（上限 5MB）。";
+    return;
+  }
+  const text = await file.text();
+  if (!text.trim()) {
+    status.textContent = "文件内容为空。";
+    return;
+  }
+  submit.disabled = true;
+  status.classList.remove("error");
+  status.textContent = "正在导入并提炼文风（大型文本需要几分钟，任务中心可查看进度）…";
+  const sourceId = slugifyStyleName(nameInput.value);
+  try {
+    await enqueueTask(
+      "source_operation",
+      {
+        action: "extract",
+        source_id: sourceId,
+        content: text,
+        focus: "style",
+      },
+      {
+        label: "文风提炼已加入队列",
+        onComplete: async () => {
+          await loadStyleVaultView();
+          loadStyleVault();
+          status.textContent = "提炼完成，档案已就绪，可在“写下一章”中选用。";
+          showToast("文风档案已就绪");
+        },
+      },
+    );
+    fileInput.value = "";
+  } catch (error) {
+    status.textContent = error.message;
+    showToast(error.message, true);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+async function selectStyleProfile(sourceId) {
+  try {
+    const payload = await api("/api/style-vault", {
+      method: "POST",
+      body: JSON.stringify({ action: "select", source_id: sourceId }),
+    });
+    renderStyleVault(payload);
+    loadStyleVault();
+    showToast("已设为默认文风");
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 function documentGroup(path) {
@@ -6059,6 +6206,11 @@ function bindEvents() {
   $("#write-close").addEventListener("click", () => $("#write-dialog").close());
   $("#write-cancel").addEventListener("click", () => $("#write-dialog").close());
   $("#write-form").addEventListener("submit", runWriter);
+  $("#style-vault-import-form").addEventListener("submit", importStyleVault);
+  $("#style-vault-list").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-select-style]");
+    if (button) selectStyleProfile(button.dataset.selectStyle);
+  });
   $("#review-close").addEventListener("click", () => $("#review-dialog").close());
   $("#review-current-chapter").addEventListener("click", reviewSelectedWorkspaceChapter);
   $("#review-severity-filter").addEventListener("change", renderReviewWorkspace);

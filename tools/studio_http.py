@@ -51,6 +51,7 @@ POST_ROUTES = {
     "/api/project/delete": StudioPostRoute("delete_project", requires_project=False),
     "/api/project/writing-targets": StudioPostRoute("update_writing_targets"),
     "/api/write": StudioPostRoute("write_next_chapter"),
+    "/api/style-vault": StudioPostRoute("style_vault_action"),
     "/api/chapter/delete": StudioPostRoute("delete_chapter"),
     "/api/outline/edit": StudioPostRoute("edit_outline_structure"),
     "/api/review": StudioPostRoute("review_chapter"),

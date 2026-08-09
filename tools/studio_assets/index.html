@@ -89,6 +89,7 @@
             <button class="nav-item" type="button" data-view="chapters"><svg><use href="#icon-file"/></svg><span>正文</span></button>
             <button class="nav-item" type="button" data-view="review"><svg><use href="#icon-review"/></svg><span>审稿</span></button>
             <button class="nav-item" type="button" data-view="core" data-nav-section="library"><svg><use href="#icon-book"/></svg><span>资料库</span></button>
+            <button class="nav-item" type="button" data-view="style-vault"><svg><use href="#icon-pen"/></svg><span>风格档案馆</span></button>
             <button class="nav-item" type="button" data-view="agents" data-nav-section="agents"><svg><use href="#icon-sparkles"/></svg><span>AI 协作</span></button>
           </div>
           <details class="nav-tools">
@@ -465,6 +466,27 @@
           </form>
           <p id="search-status" class="form-status" role="status">输入关键词开始搜索</p>
           <div id="search-results" class="search-results"></div>
+        </section>
+
+        <section id="style-vault-view" class="workspace-view" hidden aria-labelledby="style-vault-title">
+          <div class="section-title-row workspace-view-header">
+            <div>
+              <p class="eyebrow">STYLE VAULT</p>
+              <h1 id="style-vault-title">风格档案馆</h1>
+              <p class="section-description">导入文本，一键提炼可复用的文风；写作时在“写下一章”中直接选用。</p>
+            </div>
+          </div>
+          <form id="style-vault-import-form" class="style-vault-import">
+            <div class="style-vault-import-fields">
+              <label for="style-vault-name">档案名称</label>
+              <input id="style-vault-name" required maxlength="64" placeholder="例如 lu_xun_style">
+              <label for="style-vault-file">作品文本（TXT / Markdown）</label>
+              <input id="style-vault-file" type="file" accept=".txt,.md,text/plain,text/markdown" required>
+            </div>
+            <button id="style-vault-import-submit" class="primary-button" type="submit">导入并提炼文风</button>
+          </form>
+          <p id="style-vault-status" class="form-status" role="status">文本会按 3 万字分块逐批提炼，完成后自动出现在下方与写作对话框中。</p>
+          <div id="style-vault-list" class="style-vault-list"></div>
         </section>
 
         <section id="agents-view" class="workspace-view" hidden aria-labelledby="agents-title">

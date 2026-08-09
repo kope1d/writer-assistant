@@ -95,6 +95,7 @@ data/novels/*/data/test_outputs/
 .pytest-temp/
 .pytest-env*/
 .pytest-run*/
+.pytest-*/
 pytest-*.log
 
 # Packaging outputs

@@ -104,7 +104,9 @@ def test_studio_writer_workspace_keeps_primary_navigation_and_contextual_tools()
     styles = (assets / "styles.css").read_text(encoding="utf-8")
     primary_nav = html.split('<div class="nav-group nav-primary">', 1)[1].split("</div>", 1)[0]
 
-    assert primary_nav.count('class="nav-item') == 6
+    assert primary_nav.count('class="nav-item') == 7
+    assert 'data-view="style-vault"' in html
+    assert 'id="style-vault-view"' in html
     assert 'data-view="research"' in html
     assert 'id="research-settings-open"' in html
     assert 'id="research-settings-dialog"' in html
@@ -818,6 +820,15 @@ def test_studio_style_vault_and_write_style_passthrough(tmp_path: Path):
     )
 
     assert calls[0]["style_id"] == "lu_xun_style"
+
+    selected = app.style_vault_action({"action": "select", "source_id": "lu_xun_style"})
+    assert selected["current"] == "lu_xun_style"
+    import yaml as studio_yaml
+
+    config = studio_yaml.safe_load(
+        (tmp_path / "novel_config.yaml").read_text(encoding="utf-8")
+    )
+    assert config["style_id"] == "lu_xun_style"
 
 
 def test_studio_context_preview_exposes_traceable_manifest(tmp_path: Path):

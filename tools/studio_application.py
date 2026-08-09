@@ -2001,10 +2001,29 @@ class StudioApplication:
         from tools.style_vault import current_style_id, list_style_profiles
 
         service = self._service()
+        service.refresh()
         return {
             "current": current_style_id(service.config),
             "profiles": list_style_profiles(service.project_root, service.novel_id),
         }
+
+    def style_vault_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Select or refresh a style profile for the active project."""
+        from tools.style_vault import set_current_style_id
+
+        action = str(payload.get("action") or "list").strip()
+        if action == "select":
+            service = self._service()
+            style_id = str(payload.get("source_id") or "").strip()
+            if not style_id:
+                raise StudioError("请选择文风档案")
+            try:
+                set_current_style_id(service.project_root, service.novel_id, style_id)
+            except ValueError as exc:
+                raise StudioError(str(exc), HTTPStatus.NOT_FOUND) from exc
+        elif action != "list":
+            raise StudioError("未知风格档案操作")
+        return self.style_vault()
 
     def manage_foreshadowing(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
