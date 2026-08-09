@@ -270,6 +270,32 @@ CURATED_MODEL_PRESETS = (
         description="编码、工程与 Agent 工作流；输出使用保守预设",
         output_limit_known=False,
     ),
+    ModelPresetSpec(
+        "local-ollama",
+        "Ollama 本地 · 自定义模型",
+        "本地模型",
+        "openai",
+        "http://localhost:11434/v1",
+        "qwen2.5:7b",
+        "openai/qwen2.5:7b",
+        32_768,
+        4_096,
+        description="本机 Ollama，离线写作；模型名可改为已拉取的任意模型",
+        output_limit_known=False,
+    ),
+    ModelPresetSpec(
+        "local-lmstudio",
+        "LM Studio 本地 · 自定义模型",
+        "本地模型",
+        "openai",
+        "http://localhost:1234/v1",
+        "local-model",
+        "openai/local-model",
+        32_768,
+        4_096,
+        description="本机 LM Studio，离线写作；模型名可改为已加载的任意模型",
+        output_limit_known=False,
+    ),
 )
 
 

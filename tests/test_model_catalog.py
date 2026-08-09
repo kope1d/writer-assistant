@@ -20,6 +20,7 @@ def test_curated_catalog_covers_common_model_families_with_unique_ids():
         "DeepSeek · V4",
         "国内前沿",
         "国际前沿",
+        "本地模型",
     }
     assert {preset["id"] for preset in catalog} >= {
         "openai-gpt-5.6-sol",
@@ -42,8 +43,30 @@ def test_curated_catalog_covers_common_model_families_with_unique_ids():
         "xiaomi-mimo-v2.5-pro",
         "xiaomi-mimo-v2.5-pro-ultraspeed",
         "xai-grok-4.5",
+        "local-ollama",
+        "local-lmstudio",
     }
     assert all(preset["metadata_source"] == "official" for preset in catalog)
+
+
+def test_local_presets_point_at_localhost_openai_compatible_servers():
+    catalog = {preset["id"]: preset for preset in build_model_preset_catalog({})}
+
+    ollama = catalog["local-ollama"]
+    lmstudio = catalog["local-lmstudio"]
+
+    assert ollama["base_url"] == "http://localhost:11434/v1"
+    assert lmstudio["base_url"] == "http://localhost:1234/v1"
+    assert ollama["provider"] == "openai"
+    assert lmstudio["provider"] == "openai"
+    assert ollama["api_format"] == "chat"
+    assert lmstudio["api_format"] == "chat"
+    assert ollama["family"] == "本地模型"
+    assert lmstudio["family"] == "本地模型"
+    assert ollama["model"] == "qwen2.5:7b"
+    assert lmstudio["model"] == "local-model"
+    assert ollama["output_limit_known"] is False
+    assert lmstudio["output_limit_known"] is False
 
 
 def test_catalog_reports_litellm_conflicts_without_overriding_official_limits():
