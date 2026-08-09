@@ -595,7 +595,7 @@ class StudioApplication:
         }
 
     def initialize_project(self, payload: dict[str, Any]) -> dict[str, Any]:
-        raw_target = str(payload.get("project_path") or "").strip()
+        raw_target = self._clean_project_path(payload.get("project_path"))
         novel_id = str(payload.get("novel_id") or "").strip()
         title = str(payload.get("title") or "").strip()
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{1,63}", novel_id):
@@ -645,13 +645,21 @@ class StudioApplication:
         )
         return self.workspace()
 
+    @staticmethod
+    def _clean_project_path(value: Any) -> str:
+        """Strip accidental surrounding quotes from user-typed directory paths."""
+        text = str(value or "").strip()
+        if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+            text = text[1:-1].strip()
+        return text
+
     def _default_project_directory(self, title: str, novel_id: str) -> Path:
         slug = re.sub(r"[^\w\u4e00-\u9fff]+", "_", title.lower()).strip("_")
         return (self.launch_root.parent / "WriterAssistantNovels" / (slug[:64] or novel_id)).resolve()
 
     def open_project(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_no_active_tasks()
-        raw_path = str(payload.get("project_path") or "").strip()
+        raw_path = self._clean_project_path(payload.get("project_path"))
         if not raw_path:
             raise StudioError("请输入作品目录")
         target = Path(raw_path).expanduser().resolve()
@@ -664,7 +672,7 @@ class StudioApplication:
         return self.workspace()
 
     def delete_project(self, payload: dict[str, Any]) -> dict[str, Any]:
-        raw_path = str(payload.get("project_path") or "").strip()
+        raw_path = self._clean_project_path(payload.get("project_path"))
         confirm = str(payload.get("confirm") or "").strip()
         if not raw_path:
             raise StudioError("请指定要删除的作品目录")

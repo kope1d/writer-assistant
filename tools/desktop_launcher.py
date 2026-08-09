@@ -101,7 +101,13 @@ def _run(
         text=True,
         encoding="utf-8",
         errors="replace",
-        env={**os.environ, "PYTHONUTF8": "1", "PIP_DISABLE_PIP_VERSION_CHECK": "1"},
+        env={
+            **os.environ,
+            "PYTHONUTF8": "1",
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+            "OPENWRITE_FASTEMBED_CACHE_DIR": str(Path(cwd) / ".fastembed-cache"),
+            "HF_ENDPOINT": "https://hf-mirror.com",
+        },
     )
 
 

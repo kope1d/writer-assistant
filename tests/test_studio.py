@@ -831,6 +831,18 @@ def test_studio_style_vault_and_write_style_passthrough(tmp_path: Path):
     assert config["style_id"] == "lu_xun_style"
 
 
+def test_studio_init_strips_quoted_project_path(tmp_path: Path):
+    app = StudioApplication(tmp_path)
+    quoted = f'"{tmp_path / "novel"}"'
+
+    result = app.initialize_project(
+        {"novel_id": "demo", "title": "演示", "project_path": quoted}
+    )
+
+    assert result["initialized"] is True
+    assert (tmp_path / "novel" / "novel_config.yaml").is_file()
+
+
 def test_studio_workspace_handles_review_issues_list(tmp_path: Path):
     init_project(tmp_path, "demo")
     from tools.review_store import ReviewStore

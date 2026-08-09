@@ -142,6 +142,8 @@ function startBackend() {
       LITELLM_LOCAL_MODEL_COST_MAP: "True",
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
+      OPENWRITE_FASTEMBED_CACHE_DIR: path.join(ROOT, ".fastembed-cache"),
+      HF_ENDPOINT: "https://hf-mirror.com",
     },
   });
   child.on("error", (err) => {

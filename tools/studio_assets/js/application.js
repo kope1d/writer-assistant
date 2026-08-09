@@ -2148,11 +2148,12 @@ async function initializeProject(event) {
   const submit = $("#project-submit");
   submit.disabled = true;
   $("#project-progress").textContent = "正在创建小说目录、真源和运行态…";
+  const projectPath = $("#project-path").value.trim().replace(/^"|"$/g, "");
   try {
     state.workspace = await api("/api/project/init", {
       method: "POST",
       body: JSON.stringify({
-        project_path: $("#project-path").value.trim(),
+        project_path: projectPath,
         novel_id: $("#project-id").value.trim(),
         title: $("#project-title").value.trim(),
         template: "default",
@@ -2437,10 +2438,11 @@ async function openProject(event) {
   const submit = $("#open-project-submit");
   submit.disabled = true;
   $("#open-project-progress").textContent = "正在校验并打开作品…";
+  const projectPath = $("#open-project-path").value.trim().replace(/^"|"$/g, "");
   try {
     state.workspace = await api("/api/project/open", {
       method: "POST",
-      body: JSON.stringify({ project_path: $("#open-project-path").value.trim() }),
+      body: JSON.stringify({ project_path: projectPath }),
     });
     state.document = null;
     state.dirty = false;
