@@ -1,0 +1,6 @@
+include 启动?Writer Assistant.command
+include 启动?Writer Assistant.bat
+recursive-include tools/studio_assets *
+
+global-exclude *.py[cod]
+global-exclude .DS_Store
