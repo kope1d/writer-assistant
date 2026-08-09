@@ -1860,6 +1860,22 @@ def test_studio_http_exposes_context_and_import_routes(tmp_path: Path):
         thread.join(timeout=2)
 
 
+def test_studio_task_route_accepts_large_body():
+    import io
+
+    from tools.studio_http import StudioRequestHandler
+
+    body = ('{"content": "' + "a" * (3 * 1024 * 1024) + '"}').encode("utf-8")
+    handler = StudioRequestHandler.__new__(StudioRequestHandler)
+    handler.headers = {"Content-Length": str(len(body))}
+    handler.path = "/api/tasks"
+    handler.rfile = io.BytesIO(body)
+
+    payload = handler._body_json()
+
+    assert len(payload["content"]) == 3 * 1024 * 1024
+
+
 def test_studio_http_exposes_real_agent_activity(tmp_path: Path):
     init_project(tmp_path, "demo")
     server = create_server(tmp_path, port=0)

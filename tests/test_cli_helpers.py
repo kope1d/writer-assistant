@@ -97,3 +97,23 @@ def test_exec_get_truth_files_returns_canonical_keys_only(tmp_path: Path):
         "ledger": "账本",
         "relationships": "关系",
     }
+
+
+def test_stdio_reconfiguration_prevents_legacy_encoding_crashes(monkeypatch):
+    import tools.cli as cli
+
+    calls = []
+
+    class FakeStream:
+        encoding = "gbk"
+
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(cli.sys, "stdout", FakeStream())
+    monkeypatch.setattr(cli.sys, "stderr", FakeStream())
+
+    cli._make_stdio_encoding_safe()
+
+    assert calls
+    assert all(call.get("errors") == "replace" for call in calls)

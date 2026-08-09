@@ -137,7 +137,12 @@ function startBackend() {
     cwd: ROOT,
     windowsHide: true,
     stdio: "ignore",
-    env: { ...process.env, LITELLM_LOCAL_MODEL_COST_MAP: "True" },
+    env: {
+      ...process.env,
+      LITELLM_LOCAL_MODEL_COST_MAP: "True",
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8",
+    },
   });
   child.on("error", (err) => {
     console.error("[writer-assistant] backend error:", err);

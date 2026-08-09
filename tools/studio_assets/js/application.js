@@ -1664,8 +1664,8 @@ async function importStyleVault(event) {
     status.textContent = "请先选择作品文本文件。";
     return;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    status.textContent = "文件过大（上限 5MB）。";
+  if (file.size > 50 * 1024 * 1024) {
+    status.textContent = "文件过大（上限 50MB）。";
     return;
   }
   const text = await file.text();
@@ -1675,7 +1675,7 @@ async function importStyleVault(event) {
   }
   submit.disabled = true;
   status.classList.remove("error");
-  status.textContent = "正在导入并提炼文风（大型文本需要几分钟，任务中心可查看进度）…";
+  status.textContent = "正在导入并提炼文风（大型文本耗时较长，任务中心可查看进度）…";
   const sourceId = slugifyStyleName(nameInput.value);
   try {
     await enqueueTask(

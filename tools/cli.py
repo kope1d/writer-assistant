@@ -38,8 +38,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _make_stdio_encoding_safe() -> None:
+    """Prevent UnicodeEncodeError on consoles using legacy encodings (GBK etc.)."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(errors="replace")
+            except Exception:
+                pass
+
+
 def main():
     """CLI 主入口"""
+    _make_stdio_encoding_safe()
     from tools.version import __version__
 
     parser = argparse.ArgumentParser(

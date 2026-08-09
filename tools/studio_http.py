@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from tools.studio_contracts import (
     MAX_ASSET_PACKAGE_REQUEST_BYTES,
     MAX_DOCUMENT_BYTES,
+    MAX_TASK_REQUEST_BYTES,
     STATIC_ROOT,
     WRITE_HEADER,
     StudioError,
@@ -442,11 +443,13 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
             raise StudioError("无效请求长度", code="INVALID_CONTENT_LENGTH") from exc
-        max_length = (
-            MAX_ASSET_PACKAGE_REQUEST_BYTES
-            if urlparse(self.path).path == "/api/assets/package/preview"
-            else MAX_DOCUMENT_BYTES + 65536
-        )
+        request_path = urlparse(self.path).path
+        if request_path == "/api/assets/package/preview":
+            max_length = MAX_ASSET_PACKAGE_REQUEST_BYTES
+        elif request_path == "/api/tasks":
+            max_length = MAX_TASK_REQUEST_BYTES
+        else:
+            max_length = MAX_DOCUMENT_BYTES + 65536
         if length <= 0 or length > max_length:
             raise StudioError(
                 "无效请求体",
