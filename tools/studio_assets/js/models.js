@@ -287,11 +287,11 @@ function emptyProfile() {
     max_output_tokens: defaults.max_tokens,
     temperature: 0.7,
     timeout_seconds: 120,
-    embedding_provider: "openai",
+    embedding_provider: "local",
     embedding_base_url: "",
-    embedding_model: "text-embedding-3-small",
-    embedding_dimension: 1536,
-    embedding_max_tokens: 8192,
+    embedding_model: "BAAI/bge-small-zh-v1.5",
+    embedding_dimension: 512,
+    embedding_max_tokens: 512,
     search_mode: "vector",
     configured: false,
   };
@@ -329,7 +329,7 @@ function fillProfileForm(value) {
   $("#model-max-tokens").value = String(profile.max_output_tokens || 24000);
   $("#model-temperature").value = String(profile.temperature ?? 0.7);
   $("#model-timeout").value = String(profile.timeout_seconds || 120);
-  $("#model-embedding-provider").value = profile.embedding_provider || "openai";
+  $("#model-embedding-provider").value = profile.embedding_provider || "local";
   $("#model-embedding-base-url").value = profile.embedding_base_url || "";
   $("#model-embedding-name").value = profile.embedding_model || "text-embedding-3-small";
   $("#model-embedding-dimension").value = String(profile.embedding_dimension || 1536);

@@ -278,3 +278,21 @@ def test_unknown_route_and_last_profile_deletion_are_rejected(
     with pytest.raises(ModelProfileError) as delete_error:
         store.delete_profile("only")
     assert delete_error.value.code == "MODEL_PROFILE_LAST_PROFILE"
+
+
+def test_profile_defaults_to_local_embedding(tmp_path: Path):
+    store = ModelProfileStore(tmp_path)
+    profile = store.save_profile(
+        {
+            "id": "demo",
+            "label": "演示",
+            "provider": "openai",
+            "base_url": "https://api.xiaomimimo.com/v1",
+            "model": "mimo-v2.5",
+            "api_format": "chat",
+        }
+    )
+
+    assert profile["embedding_provider"] == "local"
+    assert profile["embedding_model"] == "BAAI/bge-small-zh-v1.5"
+    assert profile["embedding_dimension"] == 512

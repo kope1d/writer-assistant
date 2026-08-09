@@ -140,16 +140,16 @@ class ModelProfileStore:
             "timeout_seconds": float(os.environ.get("LLM_TIMEOUT_SECONDS", "120")),
             "credential_ref": "key_default",
             "embedding_provider": os.environ.get(
-                "OPENWRITE_LIGHTRAG_EMBEDDING_PROVIDER", "openai"
+                "OPENWRITE_LIGHTRAG_EMBEDDING_PROVIDER", "local"
             ).strip(),
             "embedding_base_url": os.environ.get(
                 "OPENWRITE_LIGHTRAG_EMBEDDING_BASE_URL", ""
             ).strip(),
             "embedding_model": os.environ.get(
-                "OPENWRITE_LIGHTRAG_EMBEDDING_MODEL", DEFAULT_CLOUD_MODEL
+                "OPENWRITE_LIGHTRAG_EMBEDDING_MODEL", DEFAULT_LOCAL_MODEL
             ).strip(),
-            "embedding_dimension": 1536,
-            "embedding_max_tokens": 8192,
+            "embedding_dimension": DEFAULT_LOCAL_DIMENSION,
+            "embedding_max_tokens": DEFAULT_LOCAL_MAX_TOKENS,
             "embedding_credential_ref": "embedding_key_default",
             "search_mode": "vector",
         }
@@ -496,7 +496,7 @@ class ModelProfileStore:
         )
         try:
             embedding_provider = normalize_embedding_provider(
-                value.get("embedding_provider") or "openai"
+                value.get("embedding_provider") or "local"
             )
         except EmbeddingRuntimeError as exc:
             raise ModelProfileError(str(exc), code="INVALID_MODEL_PROFILE") from exc
