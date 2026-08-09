@@ -393,6 +393,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def electron_launch(root: Path) -> list[str | os.PathLike[str]] | None:
+    if sys.platform == "win32":
+        exe = root / "desktop" / "node_modules" / "electron" / "dist" / "electron.exe"
+    else:
+        exe = (
+            root
+            / "desktop"
+            / "node_modules"
+            / "electron"
+            / "dist"
+            / "Electron.app"
+            / "Contents"
+            / "MacOS"
+            / "Electron"
+        )
+    if not exe.is_file():
+        return None
+    return [exe, root / "desktop"]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if sys.version_info < MIN_PYTHON:
@@ -408,6 +428,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.check_only:
             print(f"[Writer Assistant] 环境检查通过：{python}")
             return 0
+        if args.desktop:
+            electron = electron_launch(root)
+            if electron:
+                print("[Writer Assistant] 正在打开桌面应用…")
+                subprocess.Popen(
+                    [os.fspath(item) for item in electron],
+                    cwd=root,
+                )
+                return 0
+            print("[Writer Assistant] 未检测到 Electron 客户端，使用内置桌面窗口。")
         port, already_running = select_port(args.port)
         url = f"http://127.0.0.1:{port}/"
         if already_running:

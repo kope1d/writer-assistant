@@ -48,6 +48,15 @@ Markdown / TXT / EPUB
 - Windows：`启动 Writer Assistant.bat`
 - macOS：`启动 Writer Assistant.command`
 
+全新克隆后，如果想使用 **Electron 桌面客户端**（Codex 式独立应用窗口），先执行一次：
+
+```bash
+cd desktop
+npm install
+```
+
+未安装 Electron 客户端时，双击启动器会自动退回内置桌面窗口，不会中断。
+
 从源码运行：
 
 ```bash
