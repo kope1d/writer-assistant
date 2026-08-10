@@ -88,7 +88,9 @@ writer studio
 
 **Studio 是 Writer Assistant 首推的日常入口。** 建书、规划、资料维护、正文写作、审稿修订和成书导出都可以在这里完成；CLI 只是同一套能力面向脚本化与调试场景的补充。
 
-主要工作区：总览、大纲、资料库、正文、创作助手、审稿、AI 协作（Goethe / Dante）、项目搜索与连续性、参考库、Skills、工具与设置。
+主要工作区：总览、写作仪表盘、大纲、资料库、正文、创作助手、审稿、AI 协作（Goethe / Dante）、项目搜索与连续性、灵感素材板、参考库、Skills、工具与设置。
+
+**作者向操作指南见 [`docs/AUTHOR-MANUAL.md`](docs/AUTHOR-MANUAL.md)**：开新书、goethe→dante 日常循环、风格库、写作干预、模型配置，全程零代码术语。
 
 ## 工作原理
 
