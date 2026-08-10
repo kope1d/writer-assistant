@@ -64,3 +64,4 @@
 - [x] 中期：审稿锚定加固（四级锚定：显式 anchor → 精确引文 → 空白归一模糊匹配 + 前后文消歧 → 词项行定位；全失败降级整章范围 + 定位提示，不再 ISSUE_NOT_ANCHORED）
 - [x] 中期：统一诊断包（JSONL 日志 .openwrite/logs/ + `writer diagnose --export` + Studio 诊断包按钮；脱敏配置/环境/版本/manifest + 复用运行时诊断报告）
 - [x] 长期 v2：灵感素材板（新视图 `/materials` + `/api/materials` 聚合五类素材：研究/参考/世界/伏笔/风格；最近更新优先 + 类型过滤 chips + 卡片摘要；点击卡片 openDocument 复用编辑链路；素材链前置打通后实现）
+- [x] 长期 v2：写作仪表盘（新视图 `/analytics` + `/api/dashboard` 聚合：① 章节字数柱状图（list_chapters + count_writing_units，末章高亮）② 审稿分数折线（ReviewStore，及格线 60 + 待刷新红点 + 通过绿点）③ 叙事预测列表（NarrativeForecastService 聚合，分支 chips + 锚点章节 + 状态映射）；纯内联 SVG 图表无外部库；hash 路由 + 刷新按钮 + 移动端单列）

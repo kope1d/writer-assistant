@@ -104,7 +104,7 @@ def test_studio_writer_workspace_keeps_primary_navigation_and_contextual_tools()
     styles = (assets / "styles.css").read_text(encoding="utf-8")
     primary_nav = html.split('<div class="nav-group nav-primary">', 1)[1].split("</div>", 1)[0]
 
-    assert primary_nav.count('class="nav-item') == 7
+    assert primary_nav.count('class="nav-item') == 8
     assert 'data-view="style-vault"' in html
     assert 'id="style-vault-view"' in html
     assert 'data-view="research"' in html
@@ -2143,6 +2143,120 @@ def test_studio_serves_materials_aggregated_by_kind(tmp_path: Path):
     recipe_item = next(item for item in materials if item["kind"] == "style")
     assert recipe_item["summary"] == ""
     assert recipe_item["kind_label"] == "风格"
+
+
+def test_studio_serves_writing_dashboard_aggregation(tmp_path: Path):
+    """写作仪表盘 API：字数序列 + 审稿分数序列 + 叙事预测列表。"""
+    init_project(tmp_path, "demo")
+    novel_root = tmp_path / "data" / "novels" / "demo"
+    manuscript = novel_root / "data" / "manuscript" / "arc_001"
+    manuscript.mkdir(parents=True, exist_ok=True)
+    sizes = {"ch_001": 1200, "ch_002": 1800, "ch_003": 2400}
+    for chapter_id, units in sizes.items():
+        (manuscript / f"{chapter_id}.md").write_text(
+            f"# 第{int(chapter_id[4:])}章 测试\n\n" + "字" * units,
+            encoding="utf-8",
+        )
+    reviews = novel_root / "data" / "reviews"
+    reviews.mkdir(parents=True, exist_ok=True)
+    (reviews / "ch_002.json").write_text(
+        json.dumps(
+            {"score": 72, "passed": True, "issues": 2, "issue_details": [], "reviewed_at": "2026-08-09T10:00:00", "stale": False},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (reviews / "ch_003.json").write_text(
+        json.dumps(
+            {"score": 88, "passed": True, "issues": 1, "issue_details": [], "reviewed_at": "2026-08-10T10:00:00", "stale": False},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    # 叙事预测：直接落盘一个合法 forecast.json（list 按目录名解析）
+    from models.narrative_forecast import (
+        ForecastBeatV1,
+        ForecastBranchV1,
+        ForecastCharacterDecisionV1,
+        ForecastIntentAlignmentV1,
+        ForecastProjectedChangesV1,
+        ForecastRiskV1,
+        NarrativeForecastV1,
+    )
+
+    def _branch(branch_id: str, title: str) -> ForecastBranchV1:
+        return ForecastBranchV1(
+            branch_id=branch_id,
+            title=title,
+            premise="分支走向",
+            beats=[ForecastBeatV1(offset=1, chapter_id="ch_004", summary="转折")],
+            character_decisions=[
+                ForecastCharacterDecisionV1(character="主角", decision="做出选择")
+            ],
+            projected_changes=ForecastProjectedChangesV1(
+                characters=("主角",), relationships=(), world=(), foreshadowing=()
+            ),
+            risks=[ForecastRiskV1(kind="continuity", description="与伏笔冲突")],
+            uncertainties=["细节未定"],
+            intent_alignment=ForecastIntentAlignmentV1(
+                score=85, rationale="符合当前走向"
+            ),
+        )
+
+    forecast = NarrativeForecastV1(
+        forecast_id="forecast_20260810120000_abcd1234",
+        novel_id="demo",
+        created_at="2026-08-10T12:00:00+00:00",
+        divergence="主角是否会接受神秘邀请",
+        branch_count=2,
+        horizon=5,
+        anchor_chapter_id="ch_003",
+        anchor_chapter_title="第三章 来信",
+        anchor_chapter_status="drafted",
+        anchor_chapter_number=3,
+        anchor_chapter_path=("data/manuscript/arc_001/ch_003.md",),
+        base_chapter=2,
+        outline_revision="r1",
+        facts_revision="r2",
+        context_fingerprint="sha256:" + "a" * 64,
+        context_brief="brief",
+        state="active",
+        branches=[_branch("branch-1", "接受邀请"), _branch("branch-2", "婉拒邀请")],
+    )
+    forecast_dir = novel_root / "data" / "planning" / "narrative_forecasts" / forecast.forecast_id
+    forecast_dir.mkdir(parents=True, exist_ok=True)
+    (forecast_dir / "forecast.json").write_text(
+        forecast.model_dump_json(), encoding="utf-8"
+    )
+
+    server = create_server(tmp_path, port=0)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    opener = build_opener(ProxyHandler({}))
+    try:
+        with opener.open(f"{base}/api/dashboard") as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    # 字数序列按章节顺序，值正确
+    assert [c["chapter_id"] for c in payload["chapters"]] == ["ch_001", "ch_002", "ch_003"]
+    assert [c["writing_units"] for c in payload["chapters"]] == [1200, 1800, 2400]
+    # 审稿序列只含已审章节
+    assert [r["chapter_id"] for r in payload["reviews"]] == ["ch_002", "ch_003"]
+    assert [r["score"] for r in payload["reviews"]] == [72.0, 88.0]
+    assert all(r["passed"] for r in payload["reviews"])
+    # 叙事预测：divergence + 分支标题 + 锚点章节
+    assert len(payload["forecasts"]) == 1
+    forecast_item = payload["forecasts"][0]
+    assert forecast_item["divergence"] == "主角是否会接受神秘邀请"
+    assert forecast_item["branches"] == ["接受邀请", "婉拒邀请"]
+    assert forecast_item["branch_count"] == 2 and forecast_item["horizon"] == 5
+    assert forecast_item["anchor_chapter_title"] == "第三章 来信"
+    assert forecast_item["anchor_chapter_status"] == "drafted"
 
 
 def test_studio_downloads_diagnostic_bundle(tmp_path: Path):

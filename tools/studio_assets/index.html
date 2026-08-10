@@ -19,6 +19,7 @@
     <symbol id="icon-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
     <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/></symbol>
     <symbol id="icon-materials" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1.3A7 7 0 0 0 12 3Z"/></symbol>
+    <symbol id="icon-analytics" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/><path d="M15 7h4v4"/></symbol>
     <symbol id="icon-boxes" viewBox="0 0 24 24"><path d="m12 2 4 2.3v4.6L12 11 8 8.9V4.3ZM5 13l4 2.3v4.6L5 22l-4-2.1v-4.6ZM19 13l4 2.3v4.6L19 22l-4-2.1v-4.6Z"/></symbol>
     <symbol id="icon-network" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2M12 8v4"/></symbol>
     <symbol id="icon-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.2 3.3L7.5 7.5l3.3 1.2L12 12l1.2-3.3 3.3-1.2-3.3-1.2ZM5 14l-.8 2.2L2 17l2.2.8L5 20l.8-2.2L8 17l-2.2-.8ZM18 13l-1.2 3.3-3.3 1.2 3.3 1.2L18 22l1.2-3.3 3.3-1.2-3.3-1.2Z"/></symbol>
@@ -86,6 +87,7 @@
         <nav class="view-nav" aria-label="工作区">
           <div class="nav-group nav-primary"><span class="nav-group-label">创作</span>
             <button class="nav-item active" type="button" data-view="dashboard"><svg><use href="#icon-home"/></svg><span>总览</span></button>
+            <button class="nav-item" type="button" data-view="analytics"><svg><use href="#icon-analytics"/></svg><span>写作仪表盘</span></button>
             <button class="nav-item" type="button" data-view="outline"><svg><use href="#icon-outline"/></svg><span>大纲</span></button>
             <button class="nav-item" type="button" data-view="chapters"><svg><use href="#icon-file"/></svg><span>正文</span></button>
             <button class="nav-item" type="button" data-view="review"><svg><use href="#icon-review"/></svg><span>审稿</span></button>
@@ -239,6 +241,40 @@
               </div>
               <p id="review-workspace-status" class="form-status" role="status">选择一章查看审稿问题</p>
               <div id="review-workspace-issues" class="review-workspace-issues"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="analytics-view" class="workspace-view analytics-view" hidden aria-labelledby="analytics-title">
+          <div class="section-title-row workspace-view-header">
+            <div>
+              <p class="eyebrow">ANALYTICS</p>
+              <h1 id="analytics-title">写作仪表盘</h1>
+              <p class="section-description">章节字数趋势、审稿质量与剧情走向预测——创作全局一目了然。</p>
+            </div>
+            <button id="analytics-refresh" class="icon-button" type="button" aria-label="刷新仪表盘" title="刷新仪表盘"><svg><use href="#icon-refresh"/></svg></button>
+          </div>
+          <div class="analytics-grid">
+            <section class="analytics-card" aria-labelledby="analytics-writing-title">
+              <div class="analytics-card-header">
+                <h2 id="analytics-writing-title">写作趋势</h2>
+                <p class="analytics-card-sub">各章节字数（创作单位）</p>
+              </div>
+              <div id="analytics-writing-chart" class="analytics-chart"></div>
+            </section>
+            <section class="analytics-card" aria-labelledby="analytics-review-title">
+              <div class="analytics-card-header">
+                <h2 id="analytics-review-title">审稿质量</h2>
+                <p class="analytics-card-sub">已审章节评分（满分 100）</p>
+              </div>
+              <div id="analytics-review-chart" class="analytics-chart"></div>
+            </section>
+            <section class="analytics-card analytics-forecast-card" aria-labelledby="analytics-forecast-title">
+              <div class="analytics-card-header">
+                <h2 id="analytics-forecast-title">叙事预测</h2>
+                <p class="analytics-card-sub">剧情分歧走向（narrative forecast）</p>
+              </div>
+              <div id="analytics-forecast-list" class="analytics-forecast-list"></div>
             </section>
           </div>
         </section>

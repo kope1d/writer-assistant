@@ -173,6 +173,10 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
                 self.app.require_project()
                 self._json(self.app.materials())
                 return
+            if parsed.path == "/api/dashboard":
+                self.app.require_project()
+                self._json(self.app.dashboard())
+                return
             research_report_match = re.fullmatch(
                 r"/api/research/reports/(?P<report_id>[A-Za-z0-9][A-Za-z0-9_-]{0,100})",
                 parsed.path,

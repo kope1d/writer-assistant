@@ -1198,6 +1198,55 @@ class StudioApplication:
         items.sort(key=lambda item: item["updated_at"], reverse=True)
         return {"materials": items}
 
+    def dashboard(self) -> dict[str, Any]:
+        """写作仪表盘：字数趋势 + 审稿分数趋势 + 叙事预测列表。"""
+        if not self.initialized:
+            return {"chapters": [], "reviews": [], "forecasts": []}
+        chapters = [
+            {
+                "chapter_id": item.chapter_id,
+                "title": item.title,
+                "writing_units": int(item.writing_units),
+            }
+            for item in list_chapters(self.project_root, self.novel_id)
+        ]
+        reviews: list[dict[str, Any]] = []
+        for item in chapters:
+            review = self._load_review_result(item["chapter_id"])
+            if review is None:
+                continue
+            reviews.append(
+                {
+                    "chapter_id": item["chapter_id"],
+                    "title": item["title"],
+                    "score": review["score"],
+                    "passed": review["passed"],
+                    "issues": review["issues"],
+                    "reviewed_at": review["reviewed_at"],
+                    "stale": review["stale"],
+                }
+            )
+        forecasts: list[dict[str, Any]] = []
+        from tools.narrative_forecast import NarrativeForecastService
+
+        for forecast in NarrativeForecastService(
+            self.project_root, self.novel_id
+        ).list(limit=10):
+            forecasts.append(
+                {
+                    "forecast_id": forecast.forecast_id,
+                    "created_at": forecast.created_at,
+                    "divergence": forecast.divergence,
+                    "branch_count": forecast.branch_count,
+                    "horizon": forecast.horizon,
+                    "anchor_chapter_title": forecast.anchor_chapter_title,
+                    "anchor_chapter_status": forecast.anchor_chapter_status,
+                    "anchor_chapter_number": forecast.anchor_chapter_number,
+                    "branches": [b.title for b in forecast.branches],
+                }
+            )
+        return {"chapters": chapters, "reviews": reviews, "forecasts": forecasts}
+
     def read_document(self, relative_path: str) -> dict[str, Any]:
         path = self._resolve_document(relative_path, write=False)
         if not path.is_file():

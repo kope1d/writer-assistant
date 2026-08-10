@@ -185,6 +185,253 @@ function formatMaterialTime(epochSeconds) {
   return date.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+// ---- 写作仪表盘 ----
+
+const CHART_NS = "http://www.w3.org/2000/svg";
+const CHART_W = 640;
+const CHART_H = 170;
+
+async function loadAnalytics() {
+  const chart = $("#analytics-writing-chart");
+  if (!chart) return;
+  try {
+    const payload = await api("/api/dashboard");
+    state.analytics = payload;
+  } catch (error) {
+    state.analytics = null;
+    chart.replaceChildren(chartEmpty(error.message || "仪表盘加载失败"));
+    return;
+  }
+  renderAnalytics();
+}
+
+function renderAnalytics() {
+  const data = state.analytics || {};
+  renderWritingTrend($("#analytics-writing-chart"), data.chapters || []);
+  renderReviewTrend($("#analytics-review-chart"), data.reviews || []);
+  renderForecastList($("#analytics-forecast-list"), data.forecasts || []);
+}
+
+function chartEmpty(message) {
+  const box = document.createElement("div");
+  box.className = "analytics-empty";
+  box.textContent = message;
+  return box;
+}
+
+function chartSvg() {
+  const svg = document.createElementNS(CHART_NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${CHART_W} ${CHART_H}`);
+  svg.setAttribute("class", "analytics-svg");
+  return svg;
+}
+
+function chartGridLines(svg, niceMax, showPassLine) {
+  const padL = 46;
+  const padR = 12;
+  const padT = 18;
+  const padB = 26;
+  const plotW = CHART_W - padL - padR;
+  const plotH = CHART_H - padT - padB;
+  for (const [fraction, labelText] of [[0, String(niceMax)], [0.5, String(Math.round(niceMax / 2))], [1, "0"]]) {
+    const y = padT + plotH * fraction;
+    const line = document.createElementNS(CHART_NS, "line");
+    line.setAttribute("x1", padL);
+    line.setAttribute("y1", y);
+    line.setAttribute("x2", CHART_W - padR);
+    line.setAttribute("y2", y);
+    line.setAttribute("class", "chart-grid");
+    const text = document.createElementNS(CHART_NS, "text");
+    text.setAttribute("x", padL - 6);
+    text.setAttribute("y", y + 3.5);
+    text.setAttribute("class", "chart-axis-label");
+    text.setAttribute("text-anchor", "end");
+    text.textContent = labelText;
+    svg.append(line, text);
+  }
+  if (showPassLine) {
+    const passY = padT + plotH * 0.4;
+    const passLine = document.createElementNS(CHART_NS, "line");
+    passLine.setAttribute("x1", padL);
+    passLine.setAttribute("y1", passY);
+    passLine.setAttribute("x2", CHART_W - padR);
+    passLine.setAttribute("y2", passY);
+    passLine.setAttribute("class", "chart-pass-line");
+    const passLabel = document.createElementNS(CHART_NS, "text");
+    passLabel.setAttribute("x", CHART_W - padR - 4);
+    passLabel.setAttribute("y", passY - 4);
+    passLabel.setAttribute("class", "chart-pass-label");
+    passLabel.setAttribute("text-anchor", "end");
+    passLabel.textContent = "及格 60";
+    svg.append(passLine, passLabel);
+  }
+  return { padL, padR, padT, padB, plotW, plotH };
+}
+
+function renderWritingTrend(container, chapters) {
+  if (!container) return;
+  container.replaceChildren();
+  if (!chapters.length) {
+    container.append(chartEmpty("暂无章节——从大纲出发写下第一章吧"));
+    return;
+  }
+  const values = chapters.map((item) => item.writing_units);
+  const niceMax = Math.max(5, Math.ceil(Math.max(...values, 1) / 5) * 5);
+  const svg = chartSvg();
+  const { padL, padT, plotH, plotW } = chartGridLines(svg, niceMax, false);
+  const slotW = plotW / values.length;
+  const barW = Math.max(3, Math.min(34, slotW * 0.62));
+  const labelStep = Math.max(1, Math.ceil(values.length / 10));
+  values.forEach((value, index) => {
+    const h = Math.max(1, (value / niceMax) * plotH);
+    const x = padL + index * slotW + (slotW - barW) / 2;
+    const y = padT + plotH - h;
+    const rect = document.createElementNS(CHART_NS, "rect");
+    rect.setAttribute("x", x);
+    rect.setAttribute("y", y);
+    rect.setAttribute("width", barW);
+    rect.setAttribute("height", h);
+    rect.setAttribute("rx", Math.min(3, barW / 2));
+    rect.setAttribute("class", index === values.length - 1 ? "chart-bar latest" : "chart-bar");
+    rect.setAttribute("title", `${chapters[index].title}\n${value.toLocaleString("zh-CN")} 字`);
+    svg.append(rect);
+    if (values.length <= 12) {
+      const text = document.createElementNS(CHART_NS, "text");
+      text.setAttribute("x", x + barW / 2);
+      text.setAttribute("y", y - 4);
+      text.setAttribute("class", "chart-value-label");
+      text.setAttribute("text-anchor", "middle");
+      text.textContent = value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
+      svg.append(text);
+    }
+    if (index % labelStep === 0 || index === values.length - 1) {
+      const label = document.createElementNS(CHART_NS, "text");
+      label.setAttribute("x", x + barW / 2);
+      label.setAttribute("y", CHART_H - 8);
+      label.setAttribute("class", "chart-axis-label");
+      label.setAttribute("text-anchor", "middle");
+      label.textContent = chapters[index].chapter_id.replace("ch_", "");
+      svg.append(label);
+    }
+  });
+  container.append(svg);
+}
+
+function renderReviewTrend(container, reviews) {
+  if (!container) return;
+  container.replaceChildren();
+  if (!reviews.length) {
+    container.append(chartEmpty("暂无审稿记录——写完章节后去审稿吧"));
+    return;
+  }
+  const svg = chartSvg();
+  const { padL, padR, padT, plotH, plotW } = chartGridLines(svg, 100, true);
+  const points = reviews.map((review, index) => {
+    const x = padL + (reviews.length === 1 ? plotW / 2 : (index / (reviews.length - 1)) * plotW);
+    const y = padT + plotH * (1 - Math.max(0, Math.min(100, review.score)) / 100);
+    return { x, y, review };
+  });
+  const polyline = document.createElementNS(CHART_NS, "polyline");
+  polyline.setAttribute("points", points.map((p) => `${p.x},${p.y}`).join(" "));
+  polyline.setAttribute("class", "chart-line");
+  svg.append(polyline);
+  points.forEach(({ x, y, review }) => {
+    const dot = document.createElementNS(CHART_NS, "circle");
+    dot.setAttribute("cx", x);
+    dot.setAttribute("cy", y);
+    dot.setAttribute("r", 4);
+    dot.setAttribute(
+      "class",
+      `chart-dot${review.stale ? " stale" : review.passed ? " passed" : ""}`,
+    );
+    dot.setAttribute("title", `${review.title}\n${review.score.toFixed(0)} 分${review.stale ? "（审稿待刷新）" : ""}`);
+    svg.append(dot);
+    if (reviews.length <= 12) {
+      const text = document.createElementNS(CHART_NS, "text");
+      text.setAttribute("x", x);
+      text.setAttribute("y", y - 8);
+      text.setAttribute("class", "chart-value-label");
+      text.setAttribute("text-anchor", "middle");
+      text.textContent = review.score.toFixed(0);
+      svg.append(text);
+    }
+  });
+  if (reviews.length > 1) {
+    const firstLabel = document.createElementNS(CHART_NS, "text");
+    firstLabel.setAttribute("x", padL);
+    firstLabel.setAttribute("y", CHART_H - 8);
+    firstLabel.setAttribute("class", "chart-axis-label");
+    firstLabel.setAttribute("text-anchor", "middle");
+    firstLabel.textContent = reviews[0].chapter_id.replace("ch_", "");
+    const lastLabel = document.createElementNS(CHART_NS, "text");
+    lastLabel.setAttribute("x", CHART_W - padR);
+    lastLabel.setAttribute("y", CHART_H - 8);
+    lastLabel.setAttribute("class", "chart-axis-label");
+    lastLabel.setAttribute("text-anchor", "middle");
+    lastLabel.textContent = reviews[reviews.length - 1].chapter_id.replace("ch_", "");
+    svg.append(firstLabel, lastLabel);
+  }
+  container.append(svg);
+}
+
+function forecastAnchorStatus(status) {
+  const labels = { planned: "已规划", drafted: "已起草", published: "已发布" };
+  return labels[status] || status || "已规划";
+}
+
+function formatForecastTime(isoString) {
+  const date = new Date(isoString);
+  if (!date.getTime()) return "";
+  return date.toLocaleString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function renderForecastList(container, forecasts) {
+  if (!container) return;
+  container.replaceChildren();
+  if (!forecasts.length) {
+    container.append(chartEmpty("暂无叙事预测——在 AI 协作中用「剧情预测」生成走向分支"));
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const forecast of forecasts) {
+    const card = document.createElement("article");
+    card.className = "forecast-card";
+    const head = document.createElement("div");
+    head.className = "forecast-head";
+    const time = document.createElement("time");
+    time.className = "forecast-time";
+    time.textContent = formatForecastTime(forecast.created_at);
+    const anchor = document.createElement("span");
+    anchor.className = "forecast-anchor";
+    anchor.textContent = `锚定 ${forecast.anchor_chapter_title || "?"} · ${forecastAnchorStatus(forecast.anchor_chapter_status)}`;
+    head.append(time, anchor);
+    const divergence = document.createElement("p");
+    divergence.className = "forecast-divergence";
+    divergence.textContent = forecast.divergence;
+    const branches = document.createElement("div");
+    branches.className = "forecast-branches";
+    (forecast.branches || []).slice(0, 3).forEach((title) => {
+      const chip = document.createElement("span");
+      chip.className = "forecast-branch";
+      chip.textContent = title;
+      branches.append(chip);
+    });
+    const branchCount = (forecast.branches || []).length;
+    if (branchCount > 3) {
+      const more = document.createElement("span");
+      more.className = "forecast-branch more";
+      more.textContent = `+${branchCount - 3}`;
+      branches.append(more);
+    }
+    const meta = document.createElement("p");
+    meta.className = "forecast-meta";
+    meta.textContent = `${branchCount} 条走向 · 展望 ${forecast.horizon} 章`;
+    card.append(head, divergence, branches, meta);
+    fragment.append(card);
+  }
+  container.append(fragment);
+}
+
 function researchSearchProvider(providerId) {
   return (state.research.status?.settings?.search_providers || [])
     .find((provider) => provider.id === providerId) || null;
@@ -738,12 +985,14 @@ function setView(view, pushHistory = true) {
   const toolsNav = $(".nav-tools");
   if (toolsNav && ["continuity", "research", "search", "transfer", "deconstruct", "skills", "tools"].includes(view)) toolsNav.open = true;
   const dashboard = view === "dashboard";
+  const analyticsView = view === "analytics";
   const outlineView = view === "outline";
   const reviewView = view === "review";
   const materialsView = view === "materials";
   const researchView = view === "research";
   const documentView = ["chapters", ...libraryViews].includes(view);
   $("#dashboard-view").hidden = !dashboard;
+  $("#analytics-view").hidden = !analyticsView;
   $("#editor-view").hidden = !documentView;
   $("#outline-view").hidden = !outlineView;
   $("#review-workspace-view").hidden = !reviewView;
@@ -778,6 +1027,7 @@ function setView(view, pushHistory = true) {
   if (view === "agents") loadAgentSurface(state.agent);
   if (view === "continuity") loadContinuity();
   if (view === "style-vault") loadStyleVaultView();
+  if (analyticsView) loadAnalytics();
   if (materialsView) loadMaterials();
   if (researchView) loadResearch();
   if (reviewView) renderReviewWorkspace();
@@ -6184,6 +6434,7 @@ function exportDiagnosticBundle() {
 
 function bindEvents() {
   $("#diagnostic-bundle")?.addEventListener("click", exportDiagnosticBundle);
+  $("#analytics-refresh")?.addEventListener("click", loadAnalytics);
   $("#materials-refresh")?.addEventListener("click", loadMaterials);
   $("#bootstrap-retry")?.addEventListener("click", retryBootstrap);
   $("#bootstrap-open-project")?.addEventListener("click", openProjectDialog);
@@ -6521,7 +6772,7 @@ async function routeFromLocation() {
       (item) => item.asset_kind === kind && item.asset_id === id,
     ) || { kind, id, asset_kind: kind, asset_id: id, scope };
     await openStructuredAsset(summary, false);
-  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials"].includes(hash)) {
+  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials", "analytics"].includes(hash)) {
     setView(hash, false);
   } else {
     setView("dashboard", false);
