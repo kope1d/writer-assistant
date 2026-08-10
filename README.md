@@ -92,6 +92,8 @@ writer studio
 
 **作者向操作指南见 [`docs/AUTHOR-MANUAL.md`](docs/AUTHOR-MANUAL.md)**：开新书、goethe→dante 日常循环、风格库、写作干预、模型配置，全程零代码术语。
 
+**进度与方向见 [`docs/PROGRESS-CHECK.md`](docs/PROGRESS-CHECK.md)**：完成度、快速检查清单、已知坑、已定迭代方向——读一份即可快速掌握项目状态。
+
 ## 工作原理
 
 ### 一个小说内核，多入口共用
