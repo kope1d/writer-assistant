@@ -2529,12 +2529,20 @@ async function searchProject(event) {
   root.replaceChildren();
   try {
     const payload = await api(`/api/search?q=${encodeURIComponent(query)}&scope=${encodeURIComponent(scope)}`);
-    const engine = payload.engine === "lightrag" ? "LightRAG" : "精确文本降级";
+    const status = $("#search-status");
+    const degraded = payload.engine !== "lightrag";
+    status.classList.toggle("warn", degraded);
     const embedding = payload.embedding?.model
       ? ` · ${payload.embedding.provider_label || payload.embedding.provider} / ${payload.embedding.model}`
       : "";
-    const warning = payload.warning ? ` · ${payload.warning}` : "";
-    $("#search-status").textContent = `${engine}${embedding} 已索引 ${payload.indexed} 份文档，找到 ${payload.results.length} 条结果${warning}`;
+    if (degraded) {
+      // 后端 warning 已含原因与降级说明（如"LightRAG 需要已配置的模型
+      // Base URL；已使用精确文本搜索"）：整段醒目展示，避免用户在精确
+      // 结果里无感使用。
+      status.textContent = `${payload.warning} · 已索引 ${payload.indexed} 份文档，找到 ${payload.results.length} 条结果`;
+    } else {
+      status.textContent = `LightRAG${embedding} 已索引 ${payload.indexed} 份文档，找到 ${payload.results.length} 条结果`;
+    }
     payload.results.forEach((result) => {
       const button = document.createElement("button");
       button.type = "button";

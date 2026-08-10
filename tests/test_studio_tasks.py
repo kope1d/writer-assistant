@@ -12,7 +12,9 @@ from tools.model_profiles import ModelProfileStore, active_model_profile
 from tools.studio import StudioApplication, create_server
 
 
-def _wait(app: StudioApplication, task_id: str, statuses: set[str], timeout: float = 15) -> dict:
+def _wait(app: StudioApplication, task_id: str, statuses: set[str], timeout: float = 30) -> dict:
+    # 30s：连续写作/审稿任务在批量跑套件时受机器负载影响，15s 偶发
+    # 超时（任务本身秒级完成，超时是调度延迟而非逻辑问题）。
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         task = app.get_task(task_id)["task"]

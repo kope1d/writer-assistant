@@ -16,6 +16,8 @@
   --success-soft: #dcefe5;
   --danger: #b42318;
   --danger-soft: #fbe3df;
+  --warning: #a15c07;
+  --warning-soft: #f9ecd9;
   --focus: #315c9d;
   --header-height: 58px;
   --sidebar-width: 226px;
@@ -72,6 +74,8 @@ svg {
   --success-soft: #1f4935;
   --danger: #ff8b7e;
   --danger-soft: #542b27;
+  --warning: #e0a33a;
+  --warning-soft: #4b3a1e;
   --focus: #8bb4f0;
 }
 
@@ -1598,6 +1602,11 @@ body.is-desktop .icon-button:active {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.55;
+}
+
+.form-status.warn {
+  color: var(--warning);
+  font-weight: 500;
 }
 
 .tool-grid,
