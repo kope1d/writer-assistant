@@ -112,20 +112,27 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 - 服务端日志：启动命令输出中的 `[search-b9abddf0eaca1a9e]` 重试链 + `GET /api/workspace` 500/200 时间戳。
 - 未发现：无 500 业务错误、无未捕获 pageerror、vditor after 回调正常触发、CLI 无崩溃。
 
-## 五、已定方向（下一迭代，按优先级）
+## 五、已定方向（2026-08-10 审计后重排，按执行顺序）
 
-### P0 桌面端收尾（85% → ~95%）
+> **执行顺序已确认**：先修审计发现（A1→A2，代价小收益大、用户每次用得上）→ 再回到旧 P0（桌面端→结构卫生）→ P1/P2 排队。
+
+### P0-1 workspace 阻塞修复（审计 A1，本轮第一个做）
+- [ ] `/api/workspace` handler 包 `_model_context`（对齐其他 21 处），embedding 走配置的 local FastEmbed
+- [ ] embedding 失败快速降级（不逐批 30s 重试），首访失败不再每次重演
+- [ ] `setView` guard 失败给用户可见提示（toast），不静默丢弃
+- 验收：`curl /api/workspace` 冷启动 < 5s；浏览器打开 Studio 后视图立即可切换；复跑 `audit-views2.mjs` 17/17 全 PASS
+
+### P0-2 项目注册表保护（审计 A2，小改动防数据丢失）
+- [ ] `ProjectRegistry.list()` 过滤逻辑不覆盖回写 registry 文件（`_save` 只写显式变更）
+- [ ] 加单测：`list()` 过滤 ephemeral 后文件仍保留原始记录
+- 验收：过滤后 registry.json 内容不变；单测覆盖该路径
+
+### P0-3 桌面端收尾（旧 P0，85% → ~95%）
 - [ ] Electron 主进程加**托盘**（退出/恢复窗口、最小化到托盘）
 - [ ] **主进程日志**落盘（对齐 CLI/Studio 的 JSONL 统一日志）
 - 验收：托盘图标可恢复窗口/彻底退出；主进程异常有日志可查
 
-### P0 workspace 阻塞修复（新增，见审计 A1）
-- [ ] `/api/workspace` handler 包 `_model_context`（对齐其他 21 处），embedding 走配置的 local FastEmbed
-- [ ] embedding 失败快速降级（不逐批 30s 重试），首访失败不再每次重演
-- [ ] `setView` guard 失败给用户可见提示（toast），不静默丢弃
-- 验收：`curl /api/workspace` 冷启动 < 5s；浏览器打开 Studio 后视图立即可切换
-
-### P0 前端结构卫生（动效铺路）
+### P0-4 前端结构卫生（动效铺路，顺带闭环审计 A3）
 - [ ] 视图切换收敛为**单一函数**（现 `setView`/`routeFromLocation` 双入口）
 - [ ] 清理 `legacyLibraryViews` 映射（2 处）与 `openDocument`/`setView` 重复翻转——保留旧 hash 链接兼容
 - [ ] 顺手清 CSP 噪音（vditor ant.js sprite 隐藏样式挪进 styles.css）
