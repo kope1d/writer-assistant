@@ -1091,6 +1091,19 @@ body.is-desktop .icon-button:active {
   display: none;
 }
 
+/* 视图切换过渡：display 翻转时 animation 自动重新触发；
+   prefers-reduced-motion 全局兜底（animation-duration 0.01ms） */
+.workspace-view:not([hidden]),
+.dashboard-view:not([hidden]),
+.outline-view:not([hidden]) {
+  animation: view-in 0.18s ease-out;
+}
+
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .research-runtime-status {
   margin: 0 0 18px;
   padding: 10px 12px;
@@ -5182,6 +5195,26 @@ input[type="checkbox"] {
 
 .write-dialog::backdrop {
   background: rgb(0 0 0 / 45%);
+}
+
+/* 弹窗打开过渡：dialog 进入 top-layer 时动画触发一次；
+   关闭不做动画（需监听动画结束再 close，收益低、复杂度高） */
+dialog[open] {
+  animation: dialog-in 0.16s ease-out;
+}
+
+dialog[open]::backdrop {
+  animation: dialog-backdrop-in 0.16s ease-out;
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dialog-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .write-dialog form {
