@@ -105,6 +105,86 @@ async function loadResearch() {
   }
 }
 
+async function loadMaterials() {
+  const grid = $("#materials-grid");
+  if (!grid) return;
+  try {
+    const payload = await api("/api/materials");
+    state.materials = payload.materials || [];
+  } catch (error) {
+    state.materials = [];
+    grid.replaceChildren(materialsEmptyState(error.message || "素材加载失败"));
+    return;
+  }
+  renderMaterials(state.materialsFilter || "all");
+}
+
+function materialsEmptyState(message) {
+  const box = document.createElement("div");
+  box.className = "materials-empty";
+  box.textContent = message;
+  return box;
+}
+
+function renderMaterials(kind) {
+  state.materialsFilter = kind;
+  const grid = $("#materials-grid");
+  if (!grid) return;
+  const filters = $("#materials-filters");
+  if (filters) {
+    const counts = { all: state.materials.length };
+    for (const item of state.materials) counts[item.kind] = (counts[item.kind] || 0) + 1;
+    const kinds = ["all", "research", "sources", "world", "foreshadowing", "style"];
+    filters.replaceChildren();
+    for (const key of kinds) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = `material-filter-chip${key === kind ? " active" : ""}`;
+      const label = key === "all" ? "全部" : state.materials.find((item) => item.kind === key)?.kind_label || key;
+      chip.textContent = `${label} ${counts[key] || 0}`;
+      chip.addEventListener("click", () => renderMaterials(key));
+      filters.append(chip);
+    }
+  }
+  const items = kind === "all"
+    ? state.materials
+    : state.materials.filter((item) => item.kind === kind);
+  grid.replaceChildren();
+  if (!items.length) {
+    grid.append(materialsEmptyState("暂无素材——先去深度研究、参考库或资料区产生资产吧"));
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const item of items) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "material-card";
+    card.title = item.path;
+    const meta = document.createElement("span");
+    meta.className = "material-kind";
+    meta.textContent = item.kind_label;
+    const title = document.createElement("strong");
+    title.className = "material-title";
+    title.textContent = item.title;
+    const summary = document.createElement("span");
+    summary.className = "material-summary";
+    summary.textContent = item.summary || "结构化资产（YAML/JSON 配置）";
+    const time = document.createElement("time");
+    time.className = "material-time";
+    time.textContent = formatMaterialTime(item.updated_at);
+    card.append(meta, title, summary, time);
+    card.addEventListener("click", () => openDocument(item.path, true));
+    fragment.append(card);
+  }
+  grid.append(fragment);
+}
+
+function formatMaterialTime(epochSeconds) {
+  const date = new Date((epochSeconds || 0) * 1000);
+  if (!date.getTime()) return "";
+  return date.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 function researchSearchProvider(providerId) {
   return (state.research.status?.settings?.search_providers || [])
     .find((provider) => provider.id === providerId) || null;
@@ -660,12 +740,14 @@ function setView(view, pushHistory = true) {
   const dashboard = view === "dashboard";
   const outlineView = view === "outline";
   const reviewView = view === "review";
+  const materialsView = view === "materials";
   const researchView = view === "research";
   const documentView = ["chapters", ...libraryViews].includes(view);
   $("#dashboard-view").hidden = !dashboard;
   $("#editor-view").hidden = !documentView;
   $("#outline-view").hidden = !outlineView;
   $("#review-workspace-view").hidden = !reviewView;
+  $("#materials-view").hidden = !materialsView;
   $("#research-view").hidden = !researchView;
   $("#search-view").hidden = view !== "search";
   $("#agents-view").hidden = view !== "agents";
@@ -696,6 +778,7 @@ function setView(view, pushHistory = true) {
   if (view === "agents") loadAgentSurface(state.agent);
   if (view === "continuity") loadContinuity();
   if (view === "style-vault") loadStyleVaultView();
+  if (materialsView) loadMaterials();
   if (researchView) loadResearch();
   if (reviewView) renderReviewWorkspace();
   updateRoutedModelIndicator();
@@ -6101,6 +6184,7 @@ function exportDiagnosticBundle() {
 
 function bindEvents() {
   $("#diagnostic-bundle")?.addEventListener("click", exportDiagnosticBundle);
+  $("#materials-refresh")?.addEventListener("click", loadMaterials);
   $("#bootstrap-retry")?.addEventListener("click", retryBootstrap);
   $("#bootstrap-open-project")?.addEventListener("click", openProjectDialog);
   $$(".nav-item").forEach((button) => {
@@ -6437,7 +6521,7 @@ async function routeFromLocation() {
       (item) => item.asset_kind === kind && item.asset_id === id,
     ) || { kind, id, asset_kind: kind, asset_id: id, scope };
     await openStructuredAsset(summary, false);
-  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research"].includes(hash)) {
+  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials"].includes(hash)) {
     setView(hash, false);
   } else {
     setView("dashboard", false);

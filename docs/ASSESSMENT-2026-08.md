@@ -63,3 +63,4 @@
 - [x] 中期：multi-write 事务对齐（快照 + 回滚 + 3 个回归测试）
 - [x] 中期：审稿锚定加固（四级锚定：显式 anchor → 精确引文 → 空白归一模糊匹配 + 前后文消歧 → 词项行定位；全失败降级整章范围 + 定位提示，不再 ISSUE_NOT_ANCHORED）
 - [x] 中期：统一诊断包（JSONL 日志 .openwrite/logs/ + `writer diagnose --export` + Studio 诊断包按钮；脱敏配置/环境/版本/manifest + 复用运行时诊断报告）
+- [x] 长期 v2：灵感素材板（新视图 `/materials` + `/api/materials` 聚合五类素材：研究/参考/世界/伏笔/风格；最近更新优先 + 类型过滤 chips + 卡片摘要；点击卡片 openDocument 复用编辑链路；素材链前置打通后实现）

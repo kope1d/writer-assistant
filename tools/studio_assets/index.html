@@ -18,6 +18,7 @@
     <symbol id="icon-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></symbol>
     <symbol id="icon-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
     <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/></symbol>
+    <symbol id="icon-materials" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1.3A7 7 0 0 0 12 3Z"/></symbol>
     <symbol id="icon-boxes" viewBox="0 0 24 24"><path d="m12 2 4 2.3v4.6L12 11 8 8.9V4.3ZM5 13l4 2.3v4.6L5 22l-4-2.1v-4.6ZM19 13l4 2.3v4.6L19 22l-4-2.1v-4.6Z"/></symbol>
     <symbol id="icon-network" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2M12 8v4"/></symbol>
     <symbol id="icon-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.2 3.3L7.5 7.5l3.3 1.2L12 12l1.2-3.3 3.3-1.2-3.3-1.2ZM5 14l-.8 2.2L2 17l2.2.8L5 20l.8-2.2L8 17l-2.2-.8ZM18 13l-1.2 3.3-3.3 1.2 3.3 1.2L18 22l1.2-3.3 3.3-1.2-3.3-1.2Z"/></symbol>
@@ -96,6 +97,7 @@
             <summary><svg><use href="#icon-tools"/></svg><span>工具与设置</span></summary>
             <div class="nav-group nav-tool-items">
               <button class="nav-item" type="button" data-view="continuity"><svg><use href="#icon-network"/></svg><span>连续性</span></button>
+              <button class="nav-item" type="button" data-view="materials"><svg><use href="#icon-materials"/></svg><span>灵感素材板</span></button>
               <button class="nav-item" type="button" data-view="research"><svg><use href="#icon-search"/></svg><span>深度研究</span></button>
               <button class="nav-item" type="button" data-view="search"><svg><use href="#icon-search"/></svg><span>项目搜索</span></button>
               <button class="nav-item" type="button" data-view="transfer"><svg><use href="#icon-file"/></svg><span>项目迁移</span></button>
@@ -239,6 +241,19 @@
               <div id="review-workspace-issues" class="review-workspace-issues"></div>
             </section>
           </div>
+        </section>
+
+        <section id="materials-view" class="workspace-view materials-view" hidden aria-labelledby="materials-title">
+          <div class="section-title-row workspace-view-header">
+            <div>
+              <p class="eyebrow">MATERIALS</p>
+              <h1 id="materials-title">灵感素材板</h1>
+              <p class="section-description">聚合研究、参考、设定、伏笔与风格资产，最近更新优先——创作时随手翻阅找灵感。</p>
+            </div>
+            <button id="materials-refresh" class="icon-button" type="button" aria-label="刷新素材" title="刷新素材"><svg><use href="#icon-refresh"/></svg></button>
+          </div>
+          <div id="materials-filters" class="material-filters" role="group" aria-label="素材类型过滤"></div>
+          <div id="materials-grid" class="materials-grid"></div>
         </section>
 
         <section id="research-view" class="workspace-view research-view" hidden aria-labelledby="research-title">

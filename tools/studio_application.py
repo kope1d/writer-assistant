@@ -112,6 +112,38 @@ from tools.writing_targets import normalize_writing_targets
 
 logger = logging.getLogger("tools.studio")
 
+# 灵感素材板：素材资产类型与聚合上限（见 StudioApplication.materials）
+MATERIAL_KIND_LABELS = {
+    "research": "深度研究",
+    "sources": "参考素材",
+    "world": "世界设定",
+    "foreshadowing": "伏笔",
+    "style": "风格",
+}
+MATERIAL_SUFFIXES = {".md", ".yaml", ".yml", ".json"}
+MATERIAL_CAP = 200
+
+
+def _material_summary(path: Path) -> str:
+    """提取 md 文件正文摘要（跳过 frontmatter/标题/键值行）；结构化文件返回空串。"""
+    if path.suffix.lower() != ".md":
+        return ""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[:24]
+    except OSError:
+        return ""
+    parts: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "---", "<!--")):
+            continue
+        if ":" in stripped and stripped.split(":", 1)[0].strip().isidentifier():
+            continue
+        parts.append(stripped)
+        if len(parts) >= 3:
+            break
+    return " ".join(parts)[:120]
+
 
 class StudioApplication:
     """Filesystem and writing operations exposed to the local HTTP layer."""
@@ -1122,6 +1154,49 @@ class StudioApplication:
                 else HTTPStatus.CONFLICT
             )
             raise StudioError(str(exc), status) from exc
+
+    def materials(self) -> dict[str, Any]:
+        """灵感素材板：聚合五类素材资产，最近更新优先。"""
+        if not self.initialized:
+            return {"materials": []}
+        roots = [
+            ("research", "data/research"),
+            ("sources", "data/sources"),
+            ("world", "data/world"),
+            ("foreshadowing", "data/foreshadowing"),
+            ("style", "data/style"),
+        ]
+        items: list[dict[str, Any]] = []
+        for kind, relative in roots:
+            root = self.novel_root / relative
+            if not root.is_dir():
+                continue
+            for path in sorted(root.rglob("*")):
+                if not (
+                    path.is_file() and path.suffix.lower() in MATERIAL_SUFFIXES
+                ):
+                    continue
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                items.append(
+                    {
+                        "path": path.relative_to(self.novel_root).as_posix(),
+                        "kind": kind,
+                        "kind_label": MATERIAL_KIND_LABELS[kind],
+                        "title": path.stem,
+                        "updated_at": int(stat.st_mtime),
+                        "size": stat.st_size,
+                        "summary": _material_summary(path),
+                    }
+                )
+                if len(items) >= MATERIAL_CAP:
+                    break
+            if len(items) >= MATERIAL_CAP:
+                break
+        items.sort(key=lambda item: item["updated_at"], reverse=True)
+        return {"materials": items}
 
     def read_document(self, relative_path: str) -> dict[str, Any]:
         path = self._resolve_document(relative_path, write=False)

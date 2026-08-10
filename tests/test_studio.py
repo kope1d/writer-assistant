@@ -2094,6 +2094,57 @@ def test_studio_revision_api_returns_document_conflict_details(tmp_path: Path):
         thread.join(timeout=2)
 
 
+def test_studio_serves_materials_aggregated_by_kind(tmp_path: Path):
+    """灵感素材板 API：聚合五类资产、md 摘要提取、最近更新优先排序。"""
+    init_project(tmp_path, "demo")
+    novel_root = tmp_path / "data" / "novels" / "demo"
+    research_dir = novel_root / "data" / "research" / "reports"
+    research_dir.mkdir(parents=True, exist_ok=True)
+    report = research_dir / "report_alpha.md"
+    report.write_text("# 研究报告\n\n---\n\n第一章的伏笔方向。\n", encoding="utf-8")
+    world_dir = novel_root / "data" / "world"
+    world_dir.mkdir(parents=True, exist_ok=True)
+    world_doc = world_dir / "kingdom.md"
+    world_doc.write_text("# 王国设定\n\n旧王朝覆灭。\n", encoding="utf-8")
+    style_dir = novel_root / "data" / "style"
+    style_dir.mkdir(parents=True, exist_ok=True)
+    recipe = style_dir / "recipe.yaml"
+    recipe.write_text("selections: []\n", encoding="utf-8")
+    # 控制排序：research 最新，world 次新，style 最旧
+    os.utime(world_doc, (1_700_000_000, 1_700_000_000))
+    os.utime(report, (1_800_000_000, 1_800_000_000))
+    os.utime(recipe, (1_600_000_000, 1_600_000_000))
+
+    server = create_server(tmp_path, port=0)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    opener = build_opener(ProxyHandler({}))
+    try:
+        with opener.open(f"{base}/api/materials") as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    materials = payload["materials"]
+    titles = [item["title"] for item in materials]
+    # 自建素材全部聚合（另有 init 预置的 dag.yaml/fingerprint.yaml）
+    assert "report_alpha" in titles and "kingdom" in titles and "recipe" in titles
+    # 最近更新优先：report mtime 最大，必须排最前
+    assert titles[0] == "report_alpha"
+    kinds = {item["kind"] for item in materials}
+    assert {"research", "world", "style", "foreshadowing"} <= kinds
+    # md 摘要提取：跳过标题与 frontmatter
+    summary = next(item["summary"] for item in materials if item["kind"] == "research")
+    assert "伏笔方向" in summary
+    # 结构化资产无摘要（前端显示占位）
+    recipe_item = next(item for item in materials if item["kind"] == "style")
+    assert recipe_item["summary"] == ""
+    assert recipe_item["kind_label"] == "风格"
+
+
 def test_studio_downloads_diagnostic_bundle(tmp_path: Path):
     init_project(tmp_path, "demo")
     server = create_server(tmp_path, port=0)
