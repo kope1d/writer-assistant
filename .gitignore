@@ -93,6 +93,8 @@ data/novels/*/data/test_outputs/
 
 # Local test scratch space
 .pytest-temp/
+.pytest_tmp/
+.pytest_tmp*/
 .pytest-env*/
 .pytest-run*/
 .pytest-*/
