@@ -76,6 +76,11 @@ def _make_stdio_encoding_safe() -> None:
 def main():
     """CLI 主入口"""
     _make_stdio_encoding_safe()
+    # 所有命令（含 goethe/dante/studio）共用项目级 JSONL 日志；未初始化项目不落盘
+    from tools.diagnostic_logging import setup_logging
+
+    if (Path.cwd() / "novel_config.yaml").is_file():
+        setup_logging(Path.cwd())
     from tools.version import __version__
 
     parser = argparse.ArgumentParser(

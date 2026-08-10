@@ -4128,6 +4128,9 @@ def create_server(
     reference_library_root: Path | None = None,
     debug: bool = False,
 ) -> ModularOpenWriteStudioServer:
+    from tools.diagnostic_logging import setup_logging
+
+    setup_logging(project_root)  # Studio 与桌面端共用项目级 JSONL 日志
     if not STATIC_ROOT.is_dir():
         raise StudioError(f"Studio 静态资源缺失: {STATIC_ROOT}")
     missing_assets = missing_required_static_assets()
