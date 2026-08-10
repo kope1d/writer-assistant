@@ -771,6 +771,17 @@ class StudioApplication:
             ),
         }
 
+    def projects(self) -> dict[str, Any]:
+        """项目落地页：注册项目列表（最近打开优先）+ 当前项目标记。
+
+        仅读注册表，不触达项目内部，秒回；项目切换走 POST /api/project/open。
+        """
+        registry = self._project_registry or ProjectRegistry()
+        return {
+            "projects": registry.list(),
+            "current": str(self.project_root),
+        }
+
     def require_project(self) -> None:
         if not self.initialized:
             raise StudioError("请先创建小说项目", HTTPStatus.PRECONDITION_REQUIRED)

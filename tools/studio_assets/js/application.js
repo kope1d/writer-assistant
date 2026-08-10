@@ -385,6 +385,88 @@ function formatForecastTime(isoString) {
   return date.toLocaleString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
 }
 
+// ---- 项目落地页 ----
+
+async function loadProjects() {
+  const grid = $("#projects-grid");
+  if (!grid) return;
+  let projects = [];
+  try {
+    const payload = await api("/api/projects");
+    projects = payload.projects || [];
+    state.projects = { projects, current: payload.current };
+  } catch (error) {
+    grid.replaceChildren(projectsEmptyState(error.message || "项目列表加载失败"));
+    return;
+  }
+  renderProjects();
+}
+
+function projectsEmptyState(message) {
+  const box = document.createElement("div");
+  box.className = "projects-empty";
+  box.textContent = message;
+  return box;
+}
+
+function formatProjectTime(isoString) {
+  const date = new Date(isoString);
+  if (!date.getTime()) return "";
+  return date.toLocaleString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function renderProjects() {
+  const grid = $("#projects-grid");
+  if (!grid) return;
+  const projects = state.projects?.projects || [];
+  grid.replaceChildren();
+  if (!projects.length) {
+    grid.append(projectsEmptyState("还没有作品。新建一本，或把已有的 Writer Assistant 作品目录拷到本地后打开。"));
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const project of projects) {
+    const card = document.createElement("article");
+    const isCurrent = project.path === state.projects?.current;
+    card.className = `project-card${isCurrent ? " current" : ""}`;
+    const head = document.createElement("div");
+    head.className = "project-card-head";
+    const title = document.createElement("strong");
+    title.className = "project-card-title";
+    title.textContent = project.title;
+    head.append(title);
+    if (isCurrent) {
+      const badge = document.createElement("span");
+      badge.className = "project-current-badge";
+      badge.textContent = "当前";
+      head.append(badge);
+    }
+    const meta = document.createElement("span");
+    meta.className = "project-card-id";
+    meta.textContent = `${project.novel_id} · ${formatProjectTime(project.opened_at)}`;
+    const path = document.createElement("span");
+    path.className = "project-card-path";
+    path.textContent = project.path;
+    path.title = project.path;
+    const actions = document.createElement("div");
+    actions.className = "project-card-actions";
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "project-open-btn";
+    openBtn.textContent = isCurrent ? "已在当前，切换回来" : "打开作品";
+    openBtn.addEventListener("click", () => openRecentProject(project.path));
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "project-delete-btn";
+    deleteBtn.textContent = "删除";
+    deleteBtn.addEventListener("click", () => confirmDeleteProject(project));
+    actions.append(openBtn, deleteBtn);
+    card.append(head, meta, path, actions);
+    fragment.append(card);
+  }
+  grid.append(fragment);
+}
+
 function renderForecastList(container, forecasts) {
   if (!container) return;
   container.replaceChildren();
@@ -985,6 +1067,7 @@ function setView(view, pushHistory = true) {
   const toolsNav = $(".nav-tools");
   if (toolsNav && ["continuity", "research", "search", "transfer", "deconstruct", "skills", "tools"].includes(view)) toolsNav.open = true;
   const dashboard = view === "dashboard";
+  const projectsView = view === "projects";
   const analyticsView = view === "analytics";
   const outlineView = view === "outline";
   const reviewView = view === "review";
@@ -992,6 +1075,7 @@ function setView(view, pushHistory = true) {
   const researchView = view === "research";
   const documentView = ["chapters", ...libraryViews].includes(view);
   $("#dashboard-view").hidden = !dashboard;
+  $("#projects-view").hidden = !projectsView;
   $("#analytics-view").hidden = !analyticsView;
   $("#editor-view").hidden = !documentView;
   $("#outline-view").hidden = !outlineView;
@@ -1027,6 +1111,7 @@ function setView(view, pushHistory = true) {
   if (view === "agents") loadAgentSurface(state.agent);
   if (view === "continuity") loadContinuity();
   if (view === "style-vault") loadStyleVaultView();
+  if (projectsView) loadProjects();
   if (analyticsView) loadAnalytics();
   if (materialsView) loadMaterials();
   if (researchView) loadResearch();
@@ -6434,6 +6519,7 @@ function exportDiagnosticBundle() {
 
 function bindEvents() {
   $("#diagnostic-bundle")?.addEventListener("click", exportDiagnosticBundle);
+  $("#projects-new")?.addEventListener("click", openProjectDialog);
   $("#analytics-refresh")?.addEventListener("click", loadAnalytics);
   $("#materials-refresh")?.addEventListener("click", loadMaterials);
   $("#bootstrap-retry")?.addEventListener("click", retryBootstrap);
@@ -6772,7 +6858,7 @@ async function routeFromLocation() {
       (item) => item.asset_kind === kind && item.asset_id === id,
     ) || { kind, id, asset_kind: kind, asset_id: id, scope };
     await openStructuredAsset(summary, false);
-  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials", "analytics"].includes(hash)) {
+  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials", "analytics", "projects"].includes(hash)) {
     setView(hash, false);
   } else {
     setView("dashboard", false);

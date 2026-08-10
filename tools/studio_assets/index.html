@@ -87,6 +87,7 @@
         <nav class="view-nav" aria-label="工作区">
           <div class="nav-group nav-primary"><span class="nav-group-label">创作</span>
             <button class="nav-item active" type="button" data-view="dashboard"><svg><use href="#icon-home"/></svg><span>总览</span></button>
+            <button class="nav-item" type="button" data-view="projects"><svg><use href="#icon-boxes"/></svg><span>项目</span></button>
             <button class="nav-item" type="button" data-view="analytics"><svg><use href="#icon-analytics"/></svg><span>写作仪表盘</span></button>
             <button class="nav-item" type="button" data-view="outline"><svg><use href="#icon-outline"/></svg><span>大纲</span></button>
             <button class="nav-item" type="button" data-view="chapters"><svg><use href="#icon-file"/></svg><span>正文</span></button>
@@ -149,6 +150,18 @@
             <p>Studio 已切换到基础文本编辑模式，作品读取、切换和保存仍可使用。请重新安装完整发布包后刷新页面。</p>
           </div>
         </section>
+        <section id="projects-view" class="workspace-view projects-view" hidden aria-labelledby="projects-title">
+          <div class="section-title-row workspace-view-header">
+            <div>
+              <p class="eyebrow">PROJECTS</p>
+              <h1 id="projects-title">项目</h1>
+              <p class="section-description">在作品之间切换，或从零开始一本新书。最近打开的项目排在最前。</p>
+            </div>
+            <button id="projects-new" class="quiet-button" type="button">新建项目</button>
+          </div>
+          <div id="projects-grid" class="projects-grid"></div>
+        </section>
+
         <section id="dashboard-view" class="dashboard-view" aria-labelledby="dashboard-title">
           <div class="section-title-row">
             <div>

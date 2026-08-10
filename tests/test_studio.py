@@ -123,7 +123,7 @@ def test_studio_writer_workspace_keeps_primary_navigation_and_contextual_tools()
     styles = (assets / "styles.css").read_text(encoding="utf-8")
     primary_nav = html.split('<div class="nav-group nav-primary">', 1)[1].split("</div>", 1)[0]
 
-    assert primary_nav.count('class="nav-item') == 8
+    assert primary_nav.count('class="nav-item') == 9
     assert 'data-view="style-vault"' in html
     assert 'id="style-vault-view"' in html
     assert 'data-view="research"' in html
@@ -2276,6 +2276,46 @@ def test_studio_serves_writing_dashboard_aggregation(tmp_path: Path):
     assert forecast_item["branch_count"] == 2 and forecast_item["horizon"] == 5
     assert forecast_item["anchor_chapter_title"] == "第三章 来信"
     assert forecast_item["anchor_chapter_status"] == "drafted"
+
+
+def test_studio_serves_project_landing_and_switches(tmp_path: Path):
+    """项目落地页 API：注册项目列表 + 当前标记 + 打开项目后切换更新。"""
+    project_a = tmp_path / "project_a"
+    project_b = tmp_path / "project_b"
+    init_project(project_a, "alpha")
+    init_project(project_b, "beta")
+    registry = ProjectRegistry(tmp_path / "registry.json", allow_ephemeral=True)
+    server = create_server(project_a, port=0, project_registry=registry)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    opener = build_opener(ProxyHandler({}))
+    try:
+        with opener.open(f"{base}/api/projects") as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        # 启动即激活项目 A：current == A，注册表里只有 A
+        assert payload["current"] == str(project_a.resolve())
+        assert [p["novel_id"] for p in payload["projects"]] == ["alpha"]
+
+        # 打开项目 B：切换绑定，返回新项目的 workspace
+        request = Request(
+            f"{base}/api/project/open",
+            data=json.dumps({"project_path": str(project_b)}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+        )
+        opened = json.loads(opener.open(request).read().decode("utf-8"))
+        assert opened["initialized"] is True
+        assert opened["snapshot"]["novel_id"] == "beta"
+
+        # 再查落地页：current 已切到 B，且 B 置顶（最近打开）
+        with opener.open(f"{base}/api/projects") as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        assert payload["current"] == str(project_b.resolve())
+        assert [p["novel_id"] for p in payload["projects"]] == ["beta", "alpha"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_studio_downloads_diagnostic_bundle(tmp_path: Path):

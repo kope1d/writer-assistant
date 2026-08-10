@@ -66,3 +66,4 @@
 - [x] 长期 v2：灵感素材板（新视图 `/materials` + `/api/materials` 聚合五类素材：研究/参考/世界/伏笔/风格；最近更新优先 + 类型过滤 chips + 卡片摘要；点击卡片 openDocument 复用编辑链路；素材链前置打通后实现）
 - [x] 长期 v2：写作仪表盘（新视图 `/analytics` + `/api/dashboard` 聚合：① 章节字数柱状图（list_chapters + count_writing_units，末章高亮）② 审稿分数折线（ReviewStore，及格线 60 + 待刷新红点 + 通过绿点）③ 叙事预测列表（NarrativeForecastService 聚合，分支 chips + 锚点章节 + 状态映射）；纯内联 SVG 图表无外部库；hash 路由 + 刷新按钮 + 移动端单列）
 - [x] 三.4 用户手册（`docs/AUTHOR-MANUAL.md`：作者向 3 页零代码手册——工作台运转模型、开新书流程、goethe→dante 日常循环、连续写作干预、风格库、素材保鲜、模型配置、版本恢复；README 挂载入口）
+- [x] 三.3 多项目体验（项目落地页：`/api/projects` 注册表接口秒回（只读、不触达项目内部）+ `#projects` 卡片视图（最近打开置顶 + 当前项目标记 + "打开作品/已在当前"双态按钮 + 删除入口）；Playwright 浏览器验证（卡片/徽章/切换回 dashboard 全绿）+ `test_studio_serves_project_landing_and_switches` 回归测试（打开 B 后 current 切换 + 最近置顶））
