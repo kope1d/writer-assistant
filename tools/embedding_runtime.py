@@ -194,6 +194,17 @@ class EmbeddingRuntime:
                 kwargs: dict[str, Any] = {"model_name": self.settings.model}
                 if cache_dir:
                     kwargs["cache_dir"] = str(Path(cache_dir).expanduser())
+                # 默认纯本地加载：模型未缓存时立即失败（语义检索快速降级精确
+                # 文本搜索），而不是每次触发 HuggingFace 下载，在不可达网络下
+                # 卡 connect 重试链（审计 A1：曾拖慢 workspace ~45s）。需要
+                # 自动下载时设 OPENWRITE_FASTEMBED_ALLOW_DOWNLOAD=true。
+                if (
+                    os.environ.get("OPENWRITE_FASTEMBED_ALLOW_DOWNLOAD", "")
+                    .strip()
+                    .lower()
+                    not in {"1", "true"}
+                ):
+                    kwargs["local_files_only"] = True
                 try:
                     handle = _LocalModelHandle(TextEmbedding(**kwargs))
                 except Exception as exc:

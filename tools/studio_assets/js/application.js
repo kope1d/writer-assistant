@@ -1044,9 +1044,19 @@ function syncNavigationState(view = state.view) {
   syncLibraryActions(view);
 }
 
+let workspaceViewBlockedAt = 0;
 function setView(view, pushHistory = true) {
   view = normalizeView(view);
-  if (!state.workspace) return;
+  if (!state.workspace) {
+    // 审计 A1：workspace 未就绪（首访阻塞窗口）时切换视图被静默丢弃，
+    // 用户感知"点了没反应"。给出可见提示（限流 4s 避免连点刷屏）。
+    const now = Date.now();
+    if (now - workspaceViewBlockedAt > 4000) {
+      workspaceViewBlockedAt = now;
+      showToast("工作区载入中，请稍候再切换视图…");
+    }
+    return;
+  }
   const previousView = state.view;
   if (view !== state.view && state.dirty && !window.confirm("当前文档尚未保存，仍要离开吗？")) return;
   if (view !== state.view && state.assets.dirty && !window.confirm("当前资料尚未保存，仍要离开吗？")) return;
@@ -6858,7 +6868,7 @@ async function routeFromLocation() {
       (item) => item.asset_kind === kind && item.asset_id === id,
     ) || { kind, id, asset_kind: kind, asset_id: id, scope };
     await openStructuredAsset(summary, false);
-  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials", "analytics", "projects"].includes(hash)) {
+  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials", "analytics", "projects", "style-vault"].includes(hash)) {
     setView(hash, false);
   } else {
     setView("dashboard", false);

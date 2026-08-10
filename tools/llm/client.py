@@ -296,6 +296,8 @@ class LLMClient:
         self.config = config
         if client is None:
             try:
+                # 同 model_catalog：离线下禁止 litellm 拉取远端 model cost map
+                os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
                 import litellm
             except ImportError as exc:
                 raise ImportError("请安装 litellm: pip install litellm") from exc

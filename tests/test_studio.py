@@ -154,7 +154,7 @@ def test_studio_writer_workspace_keeps_primary_navigation_and_contextual_tools()
     assert "标准 SKILL.md" in application
     assert "useRuntimeSkill" in application
     assert "function scheduleAutoSave()" in application
-    assert "if (!state.workspace) return;" in application
+    assert "if (!state.workspace) {" in application
     assert "toggleMobileNavigation(false, false)" in application
     assert "toggleInspector(false, false)" in application
     assert 'action: "prepare"' in application

@@ -552,6 +552,14 @@ class StudioApplication:
         }
 
     def workspace(self) -> dict[str, Any]:
+        # 审计 A1：workspace 链上的语义搜索（operation_status → runtime_diagnostics →
+        # context_builder → ProjectSearchIndex）依赖 search profile 的 embedding 配置；
+        # 不激活 ContextVar 会 fallback 到云端 openai → /embeddings 404 → 30s×2 批重试 ≈ 60s 阻塞。
+        # 包 _model_context 对齐其他 handler（18 处），embedding 走配置的 local FastEmbed。
+        with self._model_context(None):
+            return self._workspace_impl()
+
+    def _workspace_impl(self) -> dict[str, Any]:
         if not self.initialized:
             return {
                 "version": __version__,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -304,6 +305,10 @@ def model_preset_catalog() -> list[dict[str, Any]]:
     """Return official presets annotated with local LiteLLM coverage."""
 
     try:
+        # litellm 导入时会尝试从远端拉取 model cost map；离线/受限网络下
+        # 每次会卡 connect timeout（~9.5s），且 workspace 链上 surface 会
+        # 调用本函数 3 次。强制使用打包的本地 map，避免网络等待。
+        os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
         import litellm
 
         model_cost: Mapping[str, Mapping[str, Any]] = getattr(litellm, "model_cost", {})

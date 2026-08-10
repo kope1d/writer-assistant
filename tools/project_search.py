@@ -399,6 +399,7 @@ class LightRAGSearchBackend:
         *,
         limit: int,
     ) -> BackendSearchResult:
+        await _ensure_embedding_ready(self.configuration.embedding_settings)
         with _IndexUpdateLock(self.lock_path):
             rag = self._create_rag()
             initialized = False
@@ -437,6 +438,7 @@ class LightRAGSearchBackend:
     async def _refresh_impl(
         self, documents: list[IndexedDocument]
     ) -> BackendSearchResult:
+        await _ensure_embedding_ready(self.configuration.embedding_settings)
         with _IndexUpdateLock(self.lock_path):
             rag = self._create_rag()
             initialized = False
@@ -1461,6 +1463,54 @@ def _bounded_env_int(
 # 无限挂起——主线程绝不能跟着无限等：到点即放弃（守护线程最终自行结束，
 # 期间索引锁会让后续检索快速走 SearchIndexBusyError），调用方走降级路径。
 _SEARCH_HARD_TIMEOUT_SECONDS = 60
+
+# --- Embedding 可用性闸门（审计 A1 修复）---
+# LightRAG 内部对 embedding 失败没有快速失败：云端 404 或本地模型下载
+# 超时时，每批向量要经历 30s 重试 × 2 批 ≈ 60s，再由 _run_async 兜底——
+# workspace 链每次都要白等 ~120s 才降级精确文本搜索。这里在进入 LightRAG
+# 之前先探测 embedding（探测本身也有超时上限），失败立即抛错走降级，并把
+# 失败状态缓存到模块级：窗口内后续检索直接快速失败，不重复承受超时。
+_EMBEDDING_FAILED_UNTIL = 0.0
+_EMBEDDING_FAILED_LOCK = threading.Lock()
+# 失败后重试窗口：窗口内检索直接跳过语义检索；窗口过后自动重试一次
+# （embedding 端点或本地模型可能已恢复）。
+_EMBEDDING_RETRY_WINDOW_SECONDS = 1800
+# 探测本身的上限：本地模型未缓存时 local_files_only 构造立即失败（秒级），
+# 云端 404 也即时返回；12s 封顶覆盖半挂场景，绝不进入 60s 硬超时。
+_EMBEDDING_PROBE_TIMEOUT_SECONDS = 12
+
+
+def _embedding_failed_until() -> float:
+    with _EMBEDDING_FAILED_LOCK:
+        return _EMBEDDING_FAILED_UNTIL
+
+
+def _embedding_mark_failed() -> None:
+    with _EMBEDDING_FAILED_LOCK:
+        _EMBEDDING_FAILED_UNTIL = time.monotonic() + _EMBEDDING_RETRY_WINDOW_SECONDS
+
+
+async def _ensure_embedding_ready(settings: EmbeddingSettings) -> None:
+    """语义检索前的 embedding 可用性闸门：不可用立即抛错走降级，不等 LightRAG 内部重试。"""
+    if time.monotonic() < _embedding_failed_until():
+        raise SearchBackendError(
+            "Embedding 服务不可用（近期探测失败），本次已跳过语义检索"
+        )
+    runtime = EmbeddingRuntime(settings)
+    try:
+        await asyncio.wait_for(
+            runtime.probe(), timeout=_EMBEDDING_PROBE_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError as exc:
+        _embedding_mark_failed()
+        raise SearchBackendError(
+            f"Embedding 探测超时（>{_EMBEDDING_PROBE_TIMEOUT_SECONDS}s），本次已跳过语义检索"
+        ) from exc
+    except Exception as exc:
+        _embedding_mark_failed()
+        raise SearchBackendError(
+            f"Embedding 探测失败（{type(exc).__name__}），本次已跳过语义检索"
+        ) from exc
 
 
 def _run_async(factory: Callable[[], Coroutine[Any, Any, T]]) -> T:

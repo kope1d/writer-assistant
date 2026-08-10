@@ -8,9 +8,9 @@
 | 项 | 值 |
 |---|---|
 | 检查日期 | 2026-08-10 |
-| 总体完成度 | **~88%**（生产级可用；评估基线见 `ASSESSMENT-2026-08.md`） |
-| 路线图闭环 | **8/8 全部闭环**（2026-08-10 迭代） |
-| 当前分支 | `main`，最近提交 `30381a1`（项目落地页，三.3 闭环） |
+| 总体完成度 | **~90%**（生产级可用；评估基线见 `ASSESSMENT-2026-08.md`） |
+| 路线图闭环 | **8/8 全部闭环**（2026-08-10 迭代）+ 审计 P0-1 完成 |
+| 当前分支 | `main`，最近提交 `30381a1`（项目落地页）+ P0-1 未提交 |
 | 测试基线 | 全套 953 passed / 2 flaky（负载下）/ 31 skipped，~5.5 分钟 |
 | 定位标尺 | 单用户、本地优先的个人 AI 长篇创作工作台 |
 
@@ -22,7 +22,7 @@
 | 素材库/知识管理 | 82% | 86% | 素材孤岛打通（`data/research` 进索引根、参考 excerpt 2→4 段、采纳落库）、素材板五类聚合 |
 | Skills 系统 | 90% | 90% | 三层解析 + 双格式 + 预算/诊断/规则，本轮未动 |
 | UI 功能 | 90% | 95% | +3 视图（`/materials`、`/analytics`、`#projects` 落地页）+ 诊断包按钮 |
-| UI 切换流畅度 | 35% | 60% | 主题 FOUC 修复 + 视图 0.18s 淡入 + dialog 动画 + reduced-motion（8de77ba）；**剩余**：视图切换未收敛单函数、`legacyLibraryViews` 未清、**审计 A1：首访 workspace 阻塞 ~54s 期间切换被静默拦截（视图本身全过，问题在 workspace 加载）** |
+| UI 切换流畅度 | 35% | 95% | 主题 FOUC 修复 + 视图 0.18s 淡入 + dialog 动画 + reduced-motion（8de77ba）；**A1 修复**：workspace 0.06s（原 120.8s）+ 探测闸门快速降级 + setView toast + style-vault 路由白名单补齐 → 视图扫描 17/17 PASS；**剩余**：视图切换未收敛单函数、`legacyLibraryViews` 未清（P0-4） |
 | 桌面端 | 85% | 85% | **缺口**：无托盘、无主进程日志（下一迭代 P0） |
 | CLI | 80% | 80% | **缺口**：15 个顶层命令无 REPL（P2） |
 | 测试/工程质量 | 失调 | 稳健 | 953 通过 + `node --check` 进测试集；**剩余**：truth_manager 专用测试仅 ~2 个（P1） |
@@ -60,9 +60,10 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 
 1. **pytest basetemp PermissionError**：默认 `Temp\pytest-of-MECHREVO` 有残留进程锁，**必须 `--basetemp` 指定别处**（上述命令已带）。
 2. **任务测试负载下 flaky**：`test_studio_tasks.py` 的 `_wait` 超时 30s 在批跑负载下偶发不够（ecec795 已从 15s 放宽）；隔离重跑即过，不是回归。
-3. **LightRAG 挂起**：云 embedding 端点不可达时内部无限等待，`tools/project_search.py::_run_async` 硬超时 60s + `thread.join` 到点放弃，降级精确文本搜索；测试环境靠 `tests/conftest.py` 环境隔离避免打真实云端。
-4. **CSP 控制台噪音**：vditor `icons/ant.js` 注入 inline style 被 `style-src 'self'` 拦下（`studio_http.py:518`）；实测渲染盒 0×0 零影响，纯噪音，可留待结构卫生时处理。
-5. **服务端口**：Studio 默认 `:4569`；`verify-ui-motion.mjs` 默认 `:8799`（桌面后端），跑浏览器脚本前确认服务端口。
+3. **LightRAG 挂起**：云 embedding 端点不可达时内部无限等待，`tools/project_search.py::_run_async` 硬超时 60s + `thread.join` 到点放弃，降级精确文本搜索；测试环境靠 `tests/conftest.py` 环境隔离避免打真实云端。**A1 修复后**：进 LightRAG 前有探测闸门（失败秒级降级 + 1800s 缓存窗口），不再每次白等 60s。
+4. **本地 FastEmbed 模型需预下载**：`embedding_provider: "local"` 默认 `local_files_only=True`——模型未缓存时语义检索直接降级精确文本搜索（快速失败，不阻塞）。要启用语义检索：预先把 `BAAI/bge-small-zh-v1.5` 下到缓存，或设 `OPENWRITE_FASTEMBED_ALLOW_DOWNLOAD=true`（网络可用时自动下载，不可达时 connect 重试链会拖慢首次请求）。
+5. **CSP 控制台噪音**：vditor `icons/ant.js` 注入 inline style 被 `style-src 'self'` 拦下（`studio_http.py:518`）；实测渲染盒 0×0 零影响，纯噪音，可留待结构卫生时处理。
+6. **服务端口**：CLI `studio` 默认 `:4567`（PROGRESS-CHECK 原记 4569 是审计时手动传参）；`verify-ui-motion.mjs` 默认 `:8799`（桌面后端），跑浏览器脚本前确认服务端口。
 
 ## 四·五、功能审计（2026-08-10 全量自检）
 
@@ -79,21 +80,22 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 | 搜索/语义检索 | **A1 根因**：embedding 每次请求云端 404 → 每次 ~54s 降级 |
 | 项目注册表 | **A2**：`list()` 静默清理 ephemeral 项目并覆盖 registry 文件 |
 
-### A1（P0）首次/每次 workspace 请求阻塞 ~54s，期间所有视图切换静默失败
+### A1（P0）首次/每次 workspace 请求阻塞 ~54s，期间所有视图切换静默失败 —— 已修复 ✅
 
 - **现象**：浏览器打开 Studio 后，前 ~54s 内点击任何导航视图都无效（容器不显示、导航高亮不切换、无报错）。~54s 后一切恢复正常。
-- **根因链**（服务端日志 + 前端时序双证实）：
-  1. 每次页面加载 → `GET /api/workspace` → 触发 LightRAG 索引 flush（demo 项目 13 chunks × 2 批）；
-  2. embedding 运行时解析成**云端 openai**（`/api/workspace` handler 未包 `_model_context` → profile ContextVar 未激活 → `active={}` → provider fallback `"openai"` → base_url 用 LLM 的 `https://api.xiaomimimo.com/v1`）；
-  3. xiaomimimo 无 `/embeddings` 端点 → 404 `NotFoundError` → 每批 30s 重试（`Func: 30s, Worker: 60s`）× 2 批 ≈ 54s；
-  4. 期间 `state.workspace = NULL` → `setView()` 的 `if (!state.workspace) return`（`application.js:1049`）**静默拦截**全部视图切换；workspace 就绪后剩余视图秒切。
-- **复现证据**：视图扫描两次独立运行（workspace 冷/热）结果逐位一致——前 9 视图 × 6s 轮询 = 54s 恰好覆盖阻塞窗口，第 10 个起全 PASS；切换期间服务端零视图数据请求（`loadProjects`/`loadAnalytics` 等从未发出）。
-- **配置疑云**：`model-profiles.json` 声明 `embedding_provider: "local"`（FastEmbed/bge-small-zh），`resolve("search")` 实测也返回 local——但运行时走了云端。差异来自 workspace 请求路径未进入 `_model_context`（`studio_http.py:155` 直调 `app.workspace()`，缺 `with self._model_context(profile)`），与 21 处 `_model_context` 包裹的其他 handler 不一致。
-- **影响**：用户感知 = "打开 Studio 卡顿约 1 分钟，期间点啥都没反应"。首访+每页面刷新都会重演（日志 21:27/21:28/21:39 三次完整重试链）。
-- **修法建议**（任选，按性价比排序）：
-  1. **workspace() 包 `_model_context`**（对齐其他 handler，一行级改动）→ embedding 走配置的 local FastEmbed，索引构建本地化；
-  2. embedding 失败**快速降级**（不逐批 30s 重试，失败即回退精确文本搜索）——即便云端配置，也只慢一次而非每次；
-  3. `setView` guard 失败时**给用户可见提示**（toast"工作区载入中"），而非静默丢弃——这是防呆底线，无论如何该做。
+- **根因链**（服务端日志 + 前端时序 + 分步计时三证实）：
+  1. 每次页面加载 → `GET /api/workspace` → 链上 `operation_status → runtime_diagnostics → _context_findings → build_generation_context → ProjectSearchIndex.search()`（`context_builder.py:307`）触发 LightRAG flush（demo 项目 13 chunks × 2 批）；
+  2. `/api/workspace` handler（`studio_http.py:155`）缺 `_model_context` 包裹（与 21 处 handler 不一致）→ search profile ContextVar 未激活 → embedding fallback `"openai"` → base_url 用 LLM 的 `https://api.xiaomimimo.com/v1`；
+  3. xiaomimimo 无 `/embeddings` → 404 → 每批 30s 重试 × 2 批 ≈ 60s，且 `runtime_diagnostics` 的 `_get_semantic_references` 对 chapters+sources 两 scope 各搜一次 → **120s**；
+  4. 期间 `state.workspace = NULL` → `setView()` 的 `if (!state.workspace) return`（`application.js:1049`）**静默拦截**全部视图切换。
+  5. 次要慢点：`model_profiles → surface → model_preset_catalog → import litellm` 拉远端 model cost map，离线 connect 超时 ~9.5s × workspace 链 3 次。
+- **修复**（三管齐下 + 一处根治）：
+  1. `workspace()` 包 `_model_context(None)`（`studio_application.py:554`）——embedding 走配置的 local FastEmbed；
+  2. **探测闸门** `_ensure_embedding_ready`（`project_search.py`）：进 LightRAG 前先 `EmbeddingRuntime.probe()`（12s 封顶），失败立即抛错走精确文本降级，失败状态 1800s 窗口缓存（窗口内秒回，窗口后自动重试）；同时 `embedding_runtime.py` 默认 `local_files_only=True`（模型未缓存即秒级失败，不再每次触发 HF 下载重试链；设 `OPENWRITE_FASTEMBED_ALLOW_DOWNLOAD=true` 恢复自动下载）；
+  3. litellm 禁远端拉取：`LITELLM_LOCAL_MODEL_COST_MAP=true`（`model_catalog.py:307` 与 `llm/client.py:299` import 前 setdefault）；
+  4. `setView` guard 失败 toast 提示（限流 4s）。
+- **验收**：服务器端 `curl /api/workspace` **0.06s**（修复前 120.8s）；视图扫描 **17/17 PASS**；相关测试 92 passed。
+- **残余**：首次直调 10.1s 为 litellm import 一次性成本（进程生命周期只付一次）；语义检索在 embedding 不可用期间降级精确文本搜索（设计内行为）。
 
 ### A2（P1）项目注册表静默清空 ephemeral 项目
 
@@ -105,6 +107,7 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 
 - `routeFromLocation` 是唯一 popstate 监听（`application.js:6834`），视图切换另有一处 `setView` 直调——双入口已列方向，确认无第四入口。
 - `setView` 的 `window.confirm` 未保存离开拦截与 toast 提示并存，行为已验证正常。
+- **已顺手修复**：`routeFromLocation` 白名单缺 `style-vault` → `#style-vault` 深链/刷新落回 dashboard（`application.js` 白名单已补；审计 v3 发现，真实缺陷非脚本假阴性）。
 
 ### 审计方法记录（可复跑）
 
@@ -116,11 +119,13 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 
 > **执行顺序已确认**：先修审计发现（A1→A2，代价小收益大、用户每次用得上）→ 再回到旧 P0（桌面端→结构卫生）→ P1/P2 排队。
 
-### P0-1 workspace 阻塞修复（审计 A1，本轮第一个做）
-- [ ] `/api/workspace` handler 包 `_model_context`（对齐其他 21 处），embedding 走配置的 local FastEmbed
-- [ ] embedding 失败快速降级（不逐批 30s 重试），首访失败不再每次重演
-- [ ] `setView` guard 失败给用户可见提示（toast），不静默丢弃
-- 验收：`curl /api/workspace` 冷启动 < 5s；浏览器打开 Studio 后视图立即可切换；复跑 `audit-views2.mjs` 17/17 全 PASS
+### P0-1 workspace 阻塞修复（审计 A1，本轮已完成 ✅）
+- [x] `/api/workspace` handler 包 `_model_context`（`studio_application.py` workspace→`_workspace_impl` 包裹），embedding 走配置的 local FastEmbed
+- [x] embedding 失败快速降级（探测闸门 `_ensure_embedding_ready`：进 LightRAG 前先 probe，失败立即抛错降级 + 1800s 失败缓存窗口；`local_files_only` 默认纯本地加载，模型未缓存秒级失败；litellm `LITELLM_LOCAL_MODEL_COST_MAP` 禁远端拉取）
+- [x] `setView` guard 失败给用户可见提示（toast"工作区载入中"限流 4s），不静默丢弃
+- 顺带修复：`routeFromLocation` 白名单缺 `style-vault` → `#style-vault` 深链/刷新落回 dashboard（审计 v3 发现，已修）
+- **验收结果**：`curl /api/workspace` 服务器端 **0.06s/0.06s**（修复前 120.8s）；直调脚本冷启动 10.1s（含一次性 litellm import）/ 热 0.6s；视图扫描 **17/17 PASS**（`audit-views5.mjs`，真实容器名）；`test_studio`+`test_project_search`+`test_model_profiles` 92 passed
+- **根因细化**（分步计时实证）：workspace 链慢点不在文档加载，而在 `operation_status → runtime_diagnostics → _context_findings → build_generation_context → ProjectSearchIndex.search()`（每次 60s 硬超时 × 2 scope = 120s）＋ `model_profiles → surface → model_preset_catalog → import litellm`（远端 model cost map connect 超时 ~9.5s，×workspace 链 3 次调用）
 
 ### P0-2 项目注册表保护（审计 A2，小改动防数据丢失）
 - [ ] `ProjectRegistry.list()` 过滤逻辑不覆盖回写 registry 文件（`_save` 只写显式变更）
