@@ -58,7 +58,7 @@
 - [x] 2026-08-10：本评估文档
 - [ ] 短期：UI 动效 + 主题 FOUC
 - [ ] 短期：遗留代码清理
-- [ ] 短期：素材孤岛打通
+- [x] 短期：素材孤岛打通（盘点确认：`data/research` 已进索引根且 scope_for_path 映射到 sources（此前迭代顺带完成）；采纳产出 recipe/fingerprint/候选文档已全部落 data/style|sources 索引内；本轮放宽 sources 每章 2→4 段，保留 900 字符 excerpt 预算）
 - [x] 中期：事实仲裁闭环（正则↔delta 交叉校验 + 结构校验 + multi-write memory）
 - [x] 中期：multi-write 事务对齐（快照 + 回滚 + 3 个回归测试）
 - [x] 中期：审稿锚定加固（四级锚定：显式 anchor → 精确引文 → 空白归一模糊匹配 + 前后文消歧 → 词项行定位；全失败降级整章范围 + 定位提示，不再 ISSUE_NOT_ANCHORED）

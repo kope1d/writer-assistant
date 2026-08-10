@@ -746,6 +746,68 @@ class TestBuildGenerationContext:
         assert diagnostic["results"] == 2
         assert [item[0] for item in calls] == ["chapters", "sources"]
 
+    def test_semantic_sources_budget_relaxed_to_four_with_excerpt_cap(
+        self, project_dir
+    ):
+        """素材孤岛打通：sources 每章 2 段放宽到 4，excerpt 900 字符预算仍生效。"""
+        root, novel_id = project_dir
+
+        class FakeSearchIndex:
+            def search(self, query, *, scope, limit):
+                if scope == "sources":
+                    results = [
+                        {
+                            "path": f"data/research/reports/guide_{index}.md",
+                            "title": f"参考片段{index}",
+                            "line": 1,
+                            "scope": "sources",
+                            "retrieval": ["semantic"],
+                            "excerpt": (
+                                f"参考素材第{index}段，"
+                                + "长" * 1200
+                                if index == 4
+                                else f"参考素材第{index}段。"
+                            ),
+                        }
+                        for index in range(1, 5)
+                    ]
+                else:
+                    results = []
+                return {
+                    "engine": "lightrag",
+                    "warning_code": "",
+                    "retrieval_stats": {"semantic": len(results)},
+                    "embedding": {"provider": "local", "model": "test-local"},
+                    "results": results,
+                }
+
+        builder = ContextBuilder(
+            root,
+            novel_id,
+            search_index_factory=lambda novel_root: FakeSearchIndex(),
+        )
+        chapter = OutlineNode(
+            node_id="ch_070",
+            node_type=OutlineNodeType.CHAPTER,
+            title="筹码反转",
+            goals=["让沈烬反客为主"],
+        )
+
+        text, diagnostic = builder._get_semantic_references(
+            "ch_070",
+            current_chapter=chapter,
+            active_characters=[],
+            character_states="",
+        )
+
+        # 4 条 sources 全部保留（放宽后）
+        assert diagnostic["results"] == 4
+        for index in range(1, 5):
+            assert f"参考素材第{index}段" in text
+        # 900 字符预算仍生效：第 4 条超长 excerpt 被截断
+        excerpt_block = text[text.index("### [参考资料] 参考片段4"):]
+        assert len(excerpt_block.splitlines()[-1]) <= 900
+
     def test_build_with_outline(self, builder, project_dir):
         root, novel_id = project_dir
         outline_path = root / "data" / "novels" / novel_id / "data" / "hierarchy.yaml"

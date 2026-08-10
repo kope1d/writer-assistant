@@ -322,7 +322,9 @@ class ContextBuilder:
         diagnostics: List[dict[str, Any]] = []
         embedding: dict[str, Any] = {}
         seen_paths: set[str] = set()
-        scope_limits = {"chapters": 4, "sources": 2}
+        # sources 预算：从 2 放宽到 4（素材孤岛打通——采纳/研究资产已入索引，
+        # 每章多给参考片段；预算保护靠 excerpt 截断 900 字符 + count 上限）。
+        scope_limits = {"chapters": 4, "sources": 4}
         for scope, search_query, search_limit in requests:
             try:
                 payload = search_index.search(
