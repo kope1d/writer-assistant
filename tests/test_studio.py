@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import shutil
+import subprocess
 from http import HTTPStatus
 from pathlib import Path
 from threading import Thread
@@ -34,6 +36,23 @@ from tools.workflow_scheduler import WorkflowScheduler
 def _studio_javascript(assets: Path) -> str:
     modules = sorted((assets / "js").glob("*.js"))
     return "\n".join(path.read_text(encoding="utf-8") for path in [assets / "app.js", *modules])
+
+
+def test_studio_frontend_javascript_passes_syntax_check():
+    """前端 JS 语法校验（node --check，ESM）：防止语法错误进库。"""
+    assets = Path(__file__).parent.parent / "tools" / "studio_assets"
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node 不在 PATH，跳过 JS 语法校验")
+    js_files = [assets / "app.js", *sorted((assets / "js").glob("*.js"))]
+    for path in js_files:
+        result = subprocess.run(
+            [node, "--input-type=module", "--check"],
+            input=path.read_text(encoding="utf-8"),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"{path.name}:\n{result.stderr}"
 
 
 def test_studio_assets_load_shared_core_as_an_es_module():
