@@ -29,9 +29,13 @@ STAGE_NAMES = [
     "context_assembly",  # 1. 组装上下文
     "writing",           # 2. 生成草稿
     "review",            # 3. 审查
-    "user_confirm",      # 4. 用户确认
-    "styling",           # 5. 风格润色
-    "compression",       # 6. 压缩归档
+    # 以下三个阶段是 Skill 时代的历史阶段：当前管线（chapter_pipeline /
+    # orchestrator）只驱动到 review，不再推进它们。保留在枚举中是为了
+    # 兼容历史 workflow 记录读取（load_or_create 按 STAGE_NAMES 重建）；
+    # 新代码不应推进到这些阶段，UI 上若见到停滞在此的旧记录属正常。
+    "user_confirm",      # 4. 用户确认（历史遗留）
+    "styling",           # 5. 风格润色（历史遗留）
+    "compression",       # 6. 压缩归档（历史遗留）
 ]
 
 

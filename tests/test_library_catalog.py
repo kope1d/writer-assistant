@@ -17,6 +17,8 @@ def test_library_catalog_maps_legacy_paths_to_creator_facing_scopes():
     assert scope_for_path("src/progression/clock_sense.yaml") == "settings"
     assert scope_for_path("data/foreshadowing/hooks.md") == "continuity"
     assert scope_for_path("data/manuscript/arc_001/ch_001.md") == "chapters"
+    assert scope_for_path("data/research/reports/rs_001.md") == "sources"
+    assert scope_for_path("data/sources/opening/style/voice.md") == "sources"
 
     assert normalize_search_scope("story") == "core"
     assert normalize_search_scope("world") == "settings"

@@ -123,7 +123,7 @@ def scope_for_path(relative: str) -> str:
         return "outline"
     if path.startswith("data/manuscript/"):
         return "chapters"
-    if path.startswith(("data/sources/", "data/style/")):
+    if path.startswith(("data/sources/", "data/style/", "data/research/")):
         return "sources"
     if path.startswith(("data/world/", "data/foreshadowing/")):
         return "continuity"

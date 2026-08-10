@@ -21,10 +21,11 @@
 ## 一、改什么（架构与债务）
 
 1. **收敛双桌面方案**：Electron（主，已有全链路）/ pywebview（desktop_app.py）/ launcher 三套并存。删 pywebview 路径或降级兜底说明。
-2. **清理遗留代码**（一天内可完成）：
-   - `dante.py` 遗留 Agent（确认无调用方后删除）
-   - WorkflowScheduler 后三段（user_confirm/styling/compression）——管线从不驱动，要么驱动要么移除
-   - `legacyLibraryViews` 映射、`openDocument` 与 `setView` 重复的视图翻转
+2. **清理遗留代码**（2026-08-10 调查后修正：项目比初评干净）：
+   - ~~`dante.py` 遗留 Agent~~ —— **误判**：`dante.py` 是 `writer dante` 主入口（SKILL.md 两个主入口之一），活跃使用，保留
+   - WorkflowScheduler 后三段（user_confirm/styling/compression）——历史 Skill 时代阶段，当前管线只驱动到 review；阶段枚举是数据契约（历史 workflow 记录按 STAGE_NAMES 重建），**不删除**，已在代码注释标注遗留语义（workflow_scheduler.py STAGE_NAMES）
+   - `cli.py` `agent` 命令已优雅退役（报错指向 writer dante），兼容旧脚本，保留
+   - `legacyLibraryViews` 映射、`openDocument` 与 `setView` 重复的视图翻转——保留（兼容旧 hash 链接），重构时随前端结构卫生一并处理
    - `radar.py` 番茄榜单抓取（脆弱外围）；`research_service.py` 桥要么接素材链要么标记 deprecated
 3. **写作入口全部收敛到 `NovelApplicationService`**：连续写作/CLI/goethe 各自有写入口，杜绝"第 N 条路径忘了快照回滚"。
 4. **multi-write 接入 ChapterRunV2 事务**：当前草稿先落盘再审稿、无快照回滚——最危险的可靠性缺口。

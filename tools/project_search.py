@@ -973,6 +973,9 @@ class ProjectSearchIndex:
                 {".md", ".yaml", ".yml"},
             ),
             (self.novel_root / "data" / "style", {".md", ".yaml", ".yml"}),
+            # 深度研究报告归档（data/research/reports/*.md）：
+            # 过去是孤岛，不进索引、不被写作上下文召回；现纳入 sources scope。
+            (self.novel_root / "data" / "research", {".md"}),
         ]
         for root, suffixes in roots:
             if not root.is_dir():
