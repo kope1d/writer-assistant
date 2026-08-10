@@ -119,3 +119,7 @@ WriterAssistantPlans/
 # Personal conversation history and private novel settings
 *.私人设定.md
 *对话历史*.md
+
+# Local debug reproduction scripts and verification screenshots
+.repro_*.py
+shots/
