@@ -272,3 +272,40 @@ def test_filter_hooks_by_pov_without_pov_returns_all(tmp_path: Path):
     hooks = "任意伏笔\n另一条伏笔"
 
     assert manager.filter_hooks_by_pov(hooks, pov_character="", chapter_summaries="") == hooks
+
+
+# ── 结构校验（事实仲裁的地基） ─────────────────────────────────────
+
+
+def test_validate_truth_structure_clean_after_init(tmp_path: Path):
+    manager = _manager_with_truth(tmp_path)
+
+    assert manager.validate_truth_structure() == []
+
+
+def test_validate_truth_structure_flags_each_drift_class(tmp_path: Path):
+    manager = _manager_with_truth(tmp_path)
+    world = manager.world_dir
+
+    (world / "current_state.md").write_text(
+        "+++\nid = \"other\"\ntype = \"runtime_truth\"\n+++\n\n正文。\n",
+        encoding="utf-8",
+    )
+    (world / "ledger.md").write_text("纯 Markdown 无 front matter", encoding="utf-8")
+    (world / "relationships.md").unlink()
+
+    findings = manager.validate_truth_structure()
+    by = {(item["attr"], item["field"]): item for item in findings}
+    assert by[("current_state", "id")]["actual"] == "other"
+    assert by[("ledger", "frontmatter")]["actual"] == "缺失（legacy 纯 Markdown）"
+    # 文件缺失是合法的初始状态，不算漂移
+    assert ("relationships", "file") not in by
+
+    (world / "current_state.md").write_text(
+        "+++\nid = \"current_state\"\n类型坏了\n+++",
+        encoding="utf-8",
+    )
+    assert any(
+        item["attr"] == "current_state" and item["field"] == "frontmatter"
+        for item in manager.validate_truth_structure()
+    )

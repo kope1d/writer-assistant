@@ -489,3 +489,88 @@ def test_multi_write_preserves_previous_draft_and_truth_on_rewrite_failure(
     truth = TruthFilesManager(tmp_path, "demo").load_truth_files()
     assert truth.current_state == "第一章结算"
     assert draft_path.read_text(encoding="utf-8") == "# 第一章\n\n旧草稿正文"
+
+
+# ── 事实仲裁 + multi-write memory 集成 ─────────────────────────────
+
+
+def test_write_pipeline_records_fact_arbitration_issues(tmp_path: Path, monkeypatch):
+    """写章 settle 后：正文有、delta 未覆盖的事实进 ReviewStore 仲裁记录。"""
+    init_project(tmp_path, "demo", "事实仲裁")
+    _fake_llm(monkeypatch)
+
+    class FakeWriter:
+        def __init__(self, agent_ctx):
+            self.agent_ctx = agent_ctx
+
+        async def write_chapter(self, **kwargs):
+            return SimpleNamespace(
+                title="第一章 钟差",
+                content="林琛获得了青铜怀表，支付了 300 金币。",
+                word_count=12,
+                state_updates={},  # 结算未覆盖正文事实
+                state_delta={},
+                chapter_summary="",
+                observations="",
+                token_usage={},
+            )
+
+    class FakeReviewer:
+        def __init__(self, agent_ctx):
+            self.agent_ctx = agent_ctx
+
+        async def review(self, **kwargs):
+            return SimpleNamespace(passed=True, score=95, summary="", issues=[])
+
+    monkeypatch.setattr(agent_module, "WriterAgent", FakeWriter)
+    monkeypatch.setattr(agent_module, "ReviewerAgent", FakeReviewer)
+    service = NovelApplicationService(tmp_path)
+    written = service.write_chapter({"chapter_id": "ch_001", "target_words": 800})
+
+    assert written["ok"] is True
+    record = ReviewStore(tmp_path, "demo")._load_fact_arbitration("ch_001")  # noqa: SLF001
+    summaries = [issue["summary"] for issue in record]
+    assert any("青铜怀表" in item for item in summaries)
+    assert any("300" in item for item in summaries)
+    # 手动审稿时仲裁 issue 自动合并进审稿记录
+    service.review_chapter("ch_001")
+    review = ReviewStore(tmp_path, "demo").load("ch_001")
+    assert any("青铜怀表" in item["summary"] for item in review["issue_details"])
+
+
+def test_multi_write_records_chapter_memory(tmp_path: Path, monkeypatch):
+    """多 Agent 写的章节进写作记忆（与单写管线对齐）。"""
+    init_project(tmp_path, "demo", "多写记忆")
+    _fake_llm(monkeypatch)
+
+    class FakeDirector:
+        def __init__(self, agent_ctx, novel_id, style_id=""):
+            pass
+
+        async def run(self, chapter_id, temperature=0.7, run_review=True, **kwargs):
+            return SimpleNamespace(
+                draft=SimpleNamespace(
+                    title="第二章",
+                    content="正文内容",
+                    word_count=42,
+                    chapter_summary="林岑进入钟楼。",
+                    observations="钟慢十三秒。",
+                    token_usage={"total_tokens": 88},
+                ),
+                review=SimpleNamespace(passed=True, score=90, issues=[]),
+                applied_state_updates={"current_state": "林岑进入钟楼。"},
+                new_concepts=[],
+            )
+
+    monkeypatch.setattr(agent_module, "MultiAgentDirector", FakeDirector)
+
+    result = chapter_pipeline_module.execute_multi_agent_chapter(
+        tmp_path, {"chapter_id": "ch_002"}
+    )
+
+    assert result["ok"] is True
+    memory = ChapterMemoryStore(tmp_path, "demo").load("ch_002")
+    assert memory is not None
+    assert memory["summary"] == "林岑进入钟楼。"
+    assert memory["word_count"] == 42
+    assert memory["token_usage"] == {"total_tokens": 88}

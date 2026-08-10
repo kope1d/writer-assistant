@@ -240,6 +240,75 @@ class TruthFilesManager:
                 path.unlink(missing_ok=True)
             raise
 
+    def validate_truth_structure(self) -> List[Dict[str, Any]]:
+        """检测真相文件 front matter 结构漂移。
+
+        读取保持容错（load_truth_files 对损坏文件降级不中断写作链），但
+        漂移必须被显式发现：仲裁回路和诊断把这里的结果作为审稿 issue /
+        健康报告输入，避免“格式悄悄坏了而无人知晓”。
+
+        返回每项漂移 ``{"attr", "field", "expected", "actual"}``。
+        """
+        findings: List[Dict[str, Any]] = []
+        for attr_name in ["current_state", "ledger", "relationships"]:
+            file_path = self._get_file_path(attr_name)
+            if not file_path.exists():
+                # 文件缺失是合法的初始状态（首次结算才创建），不算漂移
+                continue
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                findings.append(
+                    {
+                        "attr": attr_name,
+                        "field": "file",
+                        "expected": "可读",
+                        "actual": str(exc),
+                    }
+                )
+                continue
+            if not content.lstrip().startswith("+++"):
+                findings.append(
+                    {
+                        "attr": attr_name,
+                        "field": "frontmatter",
+                        "expected": "TOML front matter",
+                        "actual": "缺失（legacy 纯 Markdown）",
+                    }
+                )
+                continue
+            meta, _ = parse_toml_front_matter(content)
+            if not isinstance(meta, dict) or not meta:
+                # 有 +++ 块但解析失败/为空 → 结构损坏（parse 内部吞异常返回空 dict）
+                findings.append(
+                    {
+                        "attr": attr_name,
+                        "field": "frontmatter",
+                        "expected": "合法 TOML 映射",
+                        "actual": "解析失败或为空",
+                    }
+                )
+                continue
+            if meta.get("id") != attr_name:
+                findings.append(
+                    {
+                        "attr": attr_name,
+                        "field": "id",
+                        "expected": attr_name,
+                        "actual": str(meta.get("id") or "空"),
+                    }
+                )
+            if meta.get("type") != "runtime_truth":
+                findings.append(
+                    {
+                        "attr": attr_name,
+                        "field": "type",
+                        "expected": "runtime_truth",
+                        "actual": str(meta.get("type") or "空"),
+                    }
+                )
+        return findings
+
     def update_truth_files(self, truth: TruthFiles, updates: Dict[str, str]):
         """更新指定的真相文件。
 

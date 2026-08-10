@@ -91,6 +91,15 @@ class ReviewStore:
         payload["issue_details"] = normalize_review_issues(
             chapter_id, payload.get("issue_details", [])
         )
+        # 合并写章后自动仲裁（fact_arbitration）产出的事实 issue：
+        # 仲裁记录独立保存、审稿时并入，避免 write 的自动校验被后续
+        # 手动 review 覆盖丢失。按稳定 id 去重。
+        arbitration = self._load_fact_arbitration(chapter_id)
+        if arbitration:
+            existing_ids = {item["id"] for item in payload["issue_details"]}
+            for issue in arbitration:
+                if issue.get("id") not in existing_ids:
+                    payload["issue_details"].append(issue)
         if previous is not None:
             before = normalize_review_issues(
                 chapter_id,
@@ -144,6 +153,39 @@ class ReviewStore:
         except OSError:
             return ""
         return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    def save_fact_arbitration(self, chapter_id: str, issues: list[dict[str, Any]]) -> Path:
+        """保存写章后自动仲裁产出的事实 issue（独立于手动审稿记录）。"""
+        self.review_dir.mkdir(parents=True, exist_ok=True)
+        path = self.review_dir / f"{chapter_id}.facts.json"
+        payload = {
+            "chapter_id": chapter_id,
+            "arbitrated_at": datetime.now(timezone.utc).isoformat(),
+            "issues": normalize_review_issues(chapter_id, issues),
+        }
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=self.review_dir,
+            prefix=f".{chapter_id}.",
+            suffix=".facts.tmp",
+            delete=False,
+        ) as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            temp_path = Path(handle.name)
+        temp_path.replace(path)
+        return path
+
+    def _load_fact_arbitration(self, chapter_id: str) -> list[dict[str, Any]]:
+        path = self.review_dir / f"{chapter_id}.facts.json"
+        if not path.is_file():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        issues = data.get("issues", []) if isinstance(data, dict) else []
+        return [item for item in issues if isinstance(item, dict)]
 
     def load(self, chapter_id: str) -> dict[str, Any] | None:
         path = self.path_for(chapter_id)

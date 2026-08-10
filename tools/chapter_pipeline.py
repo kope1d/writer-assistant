@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import tempfile
@@ -17,6 +18,8 @@ import yaml
 from tools.context_schema import normalize_context_payload
 from tools.style_synthesizer import render_style_manifest_summary
 from tools.utils import atomic_write_text
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -1011,6 +1014,28 @@ def execute_write_chapter(project_root: Path, args: dict[str, Any]) -> dict[str,
                     )
                 else:
                     state_delta_fallback = False
+                # 事实仲裁：正则交叉校验 LLM delta，未覆盖事实进审稿 issue。
+                # 增值服务——任何异常只记 warning，不阻塞章节提交。
+                try:
+                    from tools.fact_arbitration import arbitrate_chapter
+                    from tools.review_store import ReviewStore
+
+                    fact_issues = arbitrate_chapter(
+                        project_root,
+                        novel_id,
+                        chapter_id,
+                        result.content,
+                        state_delta,
+                        updates,
+                    )
+                    if fact_issues:
+                        ReviewStore(project_root, novel_id).save_fact_arbitration(
+                            chapter_id, fact_issues
+                        )
+                except Exception:
+                    logger.warning(
+                        "fact arbitration failed for %s", chapter_id, exc_info=True
+                    )
                 memory.save(
                     chapter_id=chapter_id,
                     title=result.title,
@@ -1574,6 +1599,36 @@ def execute_multi_agent_chapter(
                                 if item["severity"].lower() != "critical"
                             ],
                         },
+                    )
+                # 与单写管线对齐：多 Agent 写的章节也进写作记忆，
+                # 否则后续章节的上下文缺了这一章的记忆。
+                memory.save(
+                    chapter_id=chapter_id,
+                    title=result.draft.title,
+                    summary=str(getattr(result.draft, "chapter_summary", "") or ""),
+                    word_count=int(getattr(result.draft, "word_count", 0) or 0),
+                    observations=str(getattr(result.draft, "observations", "") or ""),
+                    token_usage=dict(getattr(result.draft, "token_usage", {}) or {}),
+                )
+                # 事实仲裁：与单写管线同语义，增值服务失败不阻塞。
+                try:
+                    from tools.fact_arbitration import arbitrate_chapter
+
+                    fact_issues = arbitrate_chapter(
+                        project_root,
+                        novel_id,
+                        chapter_id,
+                        result.draft.content,
+                        None,
+                        dict(result.applied_state_updates or {}),
+                    )
+                    if fact_issues:
+                        ReviewStore(project_root, novel_id).save_fact_arbitration(
+                            chapter_id, fact_issues
+                        )
+                except Exception:
+                    logger.warning(
+                        "fact arbitration failed for %s", chapter_id, exc_info=True
                     )
                 _sync_book_state(
                     project_root,
