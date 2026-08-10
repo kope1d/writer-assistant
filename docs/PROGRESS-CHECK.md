@@ -22,7 +22,7 @@
 | 素材库/知识管理 | 82% | 86% | 素材孤岛打通（`data/research` 进索引根、参考 excerpt 2→4 段、采纳落库）、素材板五类聚合 |
 | Skills 系统 | 90% | 90% | 三层解析 + 双格式 + 预算/诊断/规则，本轮未动 |
 | UI 功能 | 90% | 95% | +3 视图（`/materials`、`/analytics`、`#projects` 落地页）+ 诊断包按钮 |
-| UI 切换流畅度 | 35% | 60% | 主题 FOUC 修复 + 视图 0.18s 淡入 + dialog 动画 + reduced-motion（8de77ba）；**剩余**：视图切换未收敛单函数、`legacyLibraryViews` 未清 |
+| UI 切换流畅度 | 35% | 60% | 主题 FOUC 修复 + 视图 0.18s 淡入 + dialog 动画 + reduced-motion（8de77ba）；**剩余**：视图切换未收敛单函数、`legacyLibraryViews` 未清、**审计 A1：首访 workspace 阻塞 ~54s 期间切换被静默拦截（视图本身全过，问题在 workspace 加载）** |
 | 桌面端 | 85% | 85% | **缺口**：无托盘、无主进程日志（下一迭代 P0） |
 | CLI | 80% | 80% | **缺口**：15 个顶层命令无 REPL（P2） |
 | 测试/工程质量 | 失调 | 稳健 | 953 通过 + `node --check` 进测试集；**剩余**：truth_manager 专用测试仅 ~2 个（P1） |
@@ -64,12 +64,66 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 4. **CSP 控制台噪音**：vditor `icons/ant.js` 注入 inline style 被 `style-src 'self'` 拦下（`studio_http.py:518`）；实测渲染盒 0×0 零影响，纯噪音，可留待结构卫生时处理。
 5. **服务端口**：Studio 默认 `:4569`；`verify-ui-motion.mjs` 默认 `:8799`（桌面后端），跑浏览器脚本前确认服务端口。
 
+## 四·五、功能审计（2026-08-10 全量自检）
+
+> 范围：21 个 GET API 全扫、17 个视图浏览器扫描、vditor 编辑器探测、26 个 CLI 命令冒烟、boot 时序诊断。逐功能"能过一遍就过一遍"，发现见下。
+
+### 审计结论速览
+
+| 功能面 | 结论 |
+|---|---|
+| GET API（21 个） | **全部正常**；`/api/workspace` 存在 P0 级首访慢（见 A1） |
+| 视图（17 个） | **功能全部正常**；扫描"前 9 失败"为 A1 的确定性投影，非视图缺陷 |
+| vditor 编辑器 | 正常（约 20-24ms 就绪）；CSP inline-style 噪音仅控制台可见 |
+| CLI（26 命令） | 框架正常，status/desk/doctor 实测通过 |
+| 搜索/语义检索 | **A1 根因**：embedding 每次请求云端 404 → 每次 ~54s 降级 |
+| 项目注册表 | **A2**：`list()` 静默清理 ephemeral 项目并覆盖 registry 文件 |
+
+### A1（P0）首次/每次 workspace 请求阻塞 ~54s，期间所有视图切换静默失败
+
+- **现象**：浏览器打开 Studio 后，前 ~54s 内点击任何导航视图都无效（容器不显示、导航高亮不切换、无报错）。~54s 后一切恢复正常。
+- **根因链**（服务端日志 + 前端时序双证实）：
+  1. 每次页面加载 → `GET /api/workspace` → 触发 LightRAG 索引 flush（demo 项目 13 chunks × 2 批）；
+  2. embedding 运行时解析成**云端 openai**（`/api/workspace` handler 未包 `_model_context` → profile ContextVar 未激活 → `active={}` → provider fallback `"openai"` → base_url 用 LLM 的 `https://api.xiaomimimo.com/v1`）；
+  3. xiaomimimo 无 `/embeddings` 端点 → 404 `NotFoundError` → 每批 30s 重试（`Func: 30s, Worker: 60s`）× 2 批 ≈ 54s；
+  4. 期间 `state.workspace = NULL` → `setView()` 的 `if (!state.workspace) return`（`application.js:1049`）**静默拦截**全部视图切换；workspace 就绪后剩余视图秒切。
+- **复现证据**：视图扫描两次独立运行（workspace 冷/热）结果逐位一致——前 9 视图 × 6s 轮询 = 54s 恰好覆盖阻塞窗口，第 10 个起全 PASS；切换期间服务端零视图数据请求（`loadProjects`/`loadAnalytics` 等从未发出）。
+- **配置疑云**：`model-profiles.json` 声明 `embedding_provider: "local"`（FastEmbed/bge-small-zh），`resolve("search")` 实测也返回 local——但运行时走了云端。差异来自 workspace 请求路径未进入 `_model_context`（`studio_http.py:155` 直调 `app.workspace()`，缺 `with self._model_context(profile)`），与 21 处 `_model_context` 包裹的其他 handler 不一致。
+- **影响**：用户感知 = "打开 Studio 卡顿约 1 分钟，期间点啥都没反应"。首访+每页面刷新都会重演（日志 21:27/21:28/21:39 三次完整重试链）。
+- **修法建议**（任选，按性价比排序）：
+  1. **workspace() 包 `_model_context`**（对齐其他 handler，一行级改动）→ embedding 走配置的 local FastEmbed，索引构建本地化；
+  2. embedding 失败**快速降级**（不逐批 30s 重试，失败即回退精确文本搜索）——即便云端配置，也只慢一次而非每次；
+  3. `setView` guard 失败时**给用户可见提示**（toast"工作区载入中"），而非静默丢弃——这是防呆底线，无论如何该做。
+
+### A2（P1）项目注册表静默清空 ephemeral 项目
+
+- **现象**：`ProjectRegistry.list()` 在默认 `allow_ephemeral=False` 下把 temp/临时目录项目过滤掉，并把 registry 文件**覆盖回写**为 `projects: []`（`tools/project_registry.py` 的 `_save(available[:REGISTRY_LIMIT])`）。
+- **影响**：浏览器验证期间 registry.json 被静默清空（已手工恢复 alpha/beta 记录）；用户在非标准目录（Temp、`/tmp` 类路径）打开过项目时，注册表会被悄悄抹掉。
+- **修法建议**：清理逻辑只作用于内存视图，`_save` 时保留原始记录（或 `allow_ephemeral` 参数语义文档化），加单测断言"过滤不清空文件"。
+
+### A3（P2）前端路由结构卫生（与既有 P0 方向一致）
+
+- `routeFromLocation` 是唯一 popstate 监听（`application.js:6834`），视图切换另有一处 `setView` 直调——双入口已列方向，确认无第四入口。
+- `setView` 的 `window.confirm` 未保存离开拦截与 toast 提示并存，行为已验证正常。
+
+### 审计方法记录（可复跑）
+
+- 浏览器脚本（playwright）：`E:\Claude Code code\shots\` 与审计临时目录中的 `audit-views2.mjs`（视图扫描）、`audit-boot2.mjs`（boot 时序）、`audit-hash-events.mjs`（路由事件打点）。
+- 服务端日志：启动命令输出中的 `[search-b9abddf0eaca1a9e]` 重试链 + `GET /api/workspace` 500/200 时间戳。
+- 未发现：无 500 业务错误、无未捕获 pageerror、vditor after 回调正常触发、CLI 无崩溃。
+
 ## 五、已定方向（下一迭代，按优先级）
 
 ### P0 桌面端收尾（85% → ~95%）
 - [ ] Electron 主进程加**托盘**（退出/恢复窗口、最小化到托盘）
 - [ ] **主进程日志**落盘（对齐 CLI/Studio 的 JSONL 统一日志）
 - 验收：托盘图标可恢复窗口/彻底退出；主进程异常有日志可查
+
+### P0 workspace 阻塞修复（新增，见审计 A1）
+- [ ] `/api/workspace` handler 包 `_model_context`（对齐其他 21 处），embedding 走配置的 local FastEmbed
+- [ ] embedding 失败快速降级（不逐批 30s 重试），首访失败不再每次重演
+- [ ] `setView` guard 失败给用户可见提示（toast），不静默丢弃
+- 验收：`curl /api/workspace` 冷启动 < 5s；浏览器打开 Studio 后视图立即可切换
 
 ### P0 前端结构卫生（动效铺路）
 - [ ] 视图切换收敛为**单一函数**（现 `setView`/`routeFromLocation` 双入口）
