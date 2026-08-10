@@ -1,4 +1,9 @@
-"""Bridge the bundled DeepResearch framework into an Writer Assistant novel workspace."""
+"""Bridge the bundled DeepResearch framework into an Writer Assistant novel workspace.
+
+素材链（2026-08-10 标注）：产出归档于 data/research/reports/，已纳入
+project_search 索引根 + library_catalog sources scope，可被写作上下文
+语义召回——本桥是素材孤岛打通的一环，勿再视作孤岛。
+"""
 
 from __future__ import annotations
 

@@ -56,8 +56,8 @@
 ## 执行状态（跟踪）
 
 - [x] 2026-08-10：本评估文档
-- [ ] 短期：UI 动效 + 主题 FOUC
-- [ ] 短期：遗留代码清理
+- [x] 短期：UI 动效 + 主题 FOUC（盘点确认：8de77ba 已落地——app.js 模块顶层 pre-paint 修 FOUC、.workspace-view 0.18s 淡入、dialog[open] 0.16s 动画、reduced-motion 兜底，含 dev/verify-ui-motion.mjs）
+- [x] 短期：遗留代码清理（盘点确认：dante/WorkflowScheduler 后三段/agent 命令均为保留项；legacyLibraryViews 随前端结构卫生处理；desktop_app 已有 pywebview→浏览器降级兜底；research_service 产出已由素材孤岛打通闭环——本轮补雷达脆弱性标注 + 研究桥素材链标注）
 - [x] 短期：素材孤岛打通（盘点确认：`data/research` 已进索引根且 scope_for_path 映射到 sources（此前迭代顺带完成）；采纳产出 recipe/fingerprint/候选文档已全部落 data/style|sources 索引内；本轮放宽 sources 每章 2→4 段，保留 900 字符 excerpt 预算）
 - [x] 中期：事实仲裁闭环（正则↔delta 交叉校验 + 结构校验 + multi-write memory）
 - [x] 中期：multi-write 事务对齐（快照 + 回滚 + 3 个回归测试）
