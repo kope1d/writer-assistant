@@ -290,6 +290,20 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content)
                 return
+            if parsed.path == "/api/diagnostics":
+                self.app.require_project()
+                filename, content, mime = self.app.diagnostic_bundle_download()
+                self.send_response(HTTPStatus.OK)
+                self._security_headers()
+                self.send_header("Content-Type", mime)
+                self.send_header(
+                    "Content-Disposition",
+                    f"attachment; filename*=UTF-8''{quote(filename)}",
+                )
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
             if parsed.path == "/api/assets/package/export":
                 self.app.require_project()
                 selections: list[dict[str, str]] = []

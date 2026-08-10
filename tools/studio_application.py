@@ -3669,6 +3669,19 @@ class StudioApplication:
         }[format_name]
         return f"{self.novel_id}.{format_name}", content, mime
 
+    def diagnostic_bundle_download(self) -> tuple[str, bytes, str]:
+        """构建诊断包（日志 + 脱敏配置 + 环境信息）供下载。"""
+        from tools.diagnostic_bundle import build_diagnostic_bundle
+
+        with tempfile.TemporaryDirectory(prefix="openwrite-diagnostic-") as temp_dir:
+            output = build_diagnostic_bundle(
+                self.project_root,
+                self.novel_id,
+                out_path=Path(temp_dir) / "bundle.zip",
+            )
+            content = output.read_bytes()
+        return output.name, content, "application/zip"
+
     def _load_config(self) -> dict[str, Any]:
         try:
             data = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}

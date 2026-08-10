@@ -2092,3 +2092,22 @@ def test_studio_revision_api_returns_document_conflict_details(tmp_path: Path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_studio_downloads_diagnostic_bundle(tmp_path: Path):
+    init_project(tmp_path, "demo")
+    server = create_server(tmp_path, port=0)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    opener = build_opener(ProxyHandler({}))
+    try:
+        with opener.open(f"{base}/api/diagnostics") as response:
+            assert response.headers["Content-Type"] == "application/zip"
+            assert "attachment" in response.headers["Content-Disposition"]
+            content = response.read()
+        assert content[:2] == b"PK"  # zip magic
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

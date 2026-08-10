@@ -6094,7 +6094,13 @@ function toggleMobileNavigation(open, restoreFocus = true) {
   }
 }
 
+function exportDiagnosticBundle() {
+  // 诊断包（日志 + 脱敏配置 + 版本）由服务端构建，浏览器按 Content-Disposition 下载
+  window.location.href = "/api/diagnostics";
+}
+
 function bindEvents() {
+  $("#diagnostic-bundle")?.addEventListener("click", exportDiagnosticBundle);
   $("#bootstrap-retry")?.addEventListener("click", retryBootstrap);
   $("#bootstrap-open-project")?.addEventListener("click", openProjectDialog);
   $$(".nav-item").forEach((button) => {

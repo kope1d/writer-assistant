@@ -331,12 +331,25 @@ body.is-desktop .icon-button:active {
   transform: translateY(1px);
 }
 
+.app-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+
 .app-version {
   flex: 0 0 auto;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
+  padding: 2px 4px;
   color: var(--faint);
   font-size: 11px;
+}
+
+.app-version-row .quiet-button {
+  font-size: 11px;
+  padding: 4px 8px;
 }
 
 .style-vault-import {

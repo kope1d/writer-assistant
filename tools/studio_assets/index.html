@@ -119,7 +119,10 @@
           </select>
         </div>
         <div id="document-list" class="document-list" role="list"></div>
-        <div id="app-version" class="app-version"></div>
+        <div class="app-version-row">
+          <div id="app-version" class="app-version"></div>
+          <button id="diagnostic-bundle" class="quiet-button" type="button" title="导出诊断包（日志+脱敏配置+版本），提 issue 时附上">诊断包</button>
+        </div>
       </aside>
       <button id="mobile-nav-backdrop" class="mobile-nav-backdrop" type="button" aria-label="关闭导航" hidden></button>
       <button id="inspector-backdrop" class="inspector-backdrop" type="button" aria-label="关闭助手背景层" hidden></button>

@@ -570,6 +570,13 @@ def _add_run_command(subparsers):
 def _add_diagnose_command(subparsers):
     parser = subparsers.add_parser("diagnose", help="运行统一项目诊断")
     parser.add_argument("--stuck-minutes", type=int, default=30)
+    parser.add_argument(
+        "--export",
+        metavar="OUT_ZIP",
+        nargs="?",
+        const="",
+        help="同时导出诊断包 zip（日志+脱敏配置+环境信息）；省略路径时写到项目根",
+    )
 
 
 def _add_planning_command(subparsers):
@@ -1231,6 +1238,14 @@ def _cmd_diagnose(args) -> int:
         stuck_minutes=args.stuck_minutes
     )
     print(report.model_dump_json(indent=2))
+    if args.export is not None:
+        from tools.diagnostic_bundle import build_diagnostic_bundle
+
+        out_path = Path(args.export).resolve() if args.export else None
+        bundle = build_diagnostic_bundle(
+            Path.cwd(), novel_id, out_path=out_path
+        )
+        print(f"诊断包已导出: {bundle}")
     return 0
 
 
