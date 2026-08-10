@@ -1398,9 +1398,11 @@ def execute_multi_agent_chapter(
 ) -> dict[str, Any]:
     """Run the director/writer/reviewer chapter flow behind the same lock boundary."""
     from tools.agent import AgentContext, MultiAgentDirector
+    from tools.chapter_memory import ChapterMemoryStore
     from tools.llm import LLMClient, LLMConfig
     from tools.project_lock import ProjectBusyError, ProjectWriteLock
     from tools.review_store import ReviewStore
+    from tools.truth_manager import TruthFilesManager
     from tools.workflow_scheduler import WorkflowScheduler
 
     project_root = Path(project_root).resolve()
@@ -1485,84 +1487,105 @@ def execute_multi_agent_chapter(
                 director_options["dimensions"] = dimensions
             if bool(args.get("strict", False)):
                 director_options["strict"] = True
-            result = asyncio.run(
-                director.run(
-                    chapter_id=chapter_id,
-                    temperature=_safe_float(args.get("temperature"), 0.7),
-                    run_review=not bool(args.get("no_review")),
-                    **director_options,
+            # 事务边界（与 execute_write_chapter 同语义）：multi-write 的状
+            # 态结算（state_settler）发生在 director.run 内部、草稿落盘之前，
+            # 一旦中途失败，真相文件可能已被改写而章节未提交。先建快照并记
+            # 录旧文件，提交区异常时回滚到写前状态。
+            truth_manager = TruthFilesManager(project_root, novel_id)
+            snapshot = truth_manager.create_snapshot(
+                max(_chapter_number(chapter_id) - 1, 0)
+            )
+            memory = ChapterMemoryStore(project_root, novel_id)
+            draft_path = _chapter_path(project_root, novel_id, chapter_id)
+            memory_path = memory.path_for(chapter_id)
+            previous_draft = draft_path.read_bytes() if draft_path.is_file() else None
+            previous_memory = (
+                memory_path.read_bytes() if memory_path.is_file() else None
+            )
+            try:
+                result = asyncio.run(
+                    director.run(
+                        chapter_id=chapter_id,
+                        temperature=_safe_float(args.get("temperature"), 0.7),
+                        run_review=not bool(args.get("no_review")),
+                        **director_options,
+                    )
                 )
-            )
-            if not result.draft:
-                raise RuntimeError("未生成草稿")
-            draft_path = _save_chapter(
-                project_root,
-                novel_id,
-                chapter_id,
-                result.draft.title,
-                result.draft.content,
-            )
-            scheduler.complete_stage(
-                workflow,
-                active_stage,
-                message="chapter written via multi-write",
-                data={"draft_path": str(draft_path)},
-            )
-            active_stage = ""
-            review_payload: dict[str, Any] | None = None
-            if result.review:
-                issues: list[dict[str, Any]] = [
-                    {
-                        "severity": str(getattr(issue, "severity", "warning")),
-                        "category": str(getattr(issue, "category", "未知")),
-                        "description": str(getattr(issue, "description", "")),
-                        "suggestion": str(getattr(issue, "suggestion", "")),
-                        "dimension": getattr(issue, "dimension", None),
-                        "evidence": {
-                            "quote": str(getattr(issue, "evidence", "")),
-                            "context_before": "",
-                            "context_after": "",
-                        },
-                    }
-                    for issue in result.review.issues
-                ]
-                review_payload = {
-                    "ok": True,
-                    "chapter_id": chapter_id,
-                    "passed": bool(result.review.passed),
-                    "score": result.review.score,
-                    "issues": len(issues),
-                    "summary": str(getattr(result.review, "summary", "") or ""),
-                    "issue_details": issues,
-                    "strict": bool(args.get("strict", False)),
-                    "dimensions": dimensions,
-                }
-                ReviewStore(project_root, novel_id).save(chapter_id, review_payload)
-                scheduler.start_stage(workflow, "review")
+                if not result.draft:
+                    raise RuntimeError("未生成草稿")
+                draft_path = _save_chapter(
+                    project_root,
+                    novel_id,
+                    chapter_id,
+                    result.draft.title,
+                    result.draft.content,
+                )
                 scheduler.complete_stage(
                     workflow,
-                    "review",
-                    message="chapter reviewed via multi-write",
-                    data={
-                        "passed": bool(result.review.passed),
-                        "errors": [
-                            item["description"]
-                            for item in issues
-                            if item["severity"].lower() == "critical"
-                        ],
-                        "warnings": [
-                            item["description"]
-                            for item in issues
-                            if item["severity"].lower() != "critical"
-                        ],
-                    },
+                    active_stage,
+                    message="chapter written via multi-write",
+                    data={"draft_path": str(draft_path)},
                 )
-            _sync_book_state(
-                project_root,
-                novel_id,
-                chapter_id,
-                bool(result.review.passed) if result.review else None,
-            )
+                active_stage = ""
+                review_payload: dict[str, Any] | None = None
+                if result.review:
+                    issues: list[dict[str, Any]] = [
+                        {
+                            "severity": str(getattr(issue, "severity", "warning")),
+                            "category": str(getattr(issue, "category", "未知")),
+                            "description": str(getattr(issue, "description", "")),
+                            "suggestion": str(getattr(issue, "suggestion", "")),
+                            "dimension": getattr(issue, "dimension", None),
+                            "evidence": {
+                                "quote": str(getattr(issue, "evidence", "")),
+                                "context_before": "",
+                                "context_after": "",
+                            },
+                        }
+                        for issue in result.review.issues
+                    ]
+                    review_payload = {
+                        "ok": True,
+                        "chapter_id": chapter_id,
+                        "passed": bool(result.review.passed),
+                        "score": result.review.score,
+                        "issues": len(issues),
+                        "summary": str(getattr(result.review, "summary", "") or ""),
+                        "issue_details": issues,
+                        "strict": bool(args.get("strict", False)),
+                        "dimensions": dimensions,
+                    }
+                    ReviewStore(project_root, novel_id).save(chapter_id, review_payload)
+                    scheduler.start_stage(workflow, "review")
+                    scheduler.complete_stage(
+                        workflow,
+                        "review",
+                        message="chapter reviewed via multi-write",
+                        data={
+                            "passed": bool(result.review.passed),
+                            "errors": [
+                                item["description"]
+                                for item in issues
+                                if item["severity"].lower() == "critical"
+                            ],
+                            "warnings": [
+                                item["description"]
+                                for item in issues
+                                if item["severity"].lower() != "critical"
+                            ],
+                        },
+                    )
+                _sync_book_state(
+                    project_root,
+                    novel_id,
+                    chapter_id,
+                    bool(result.review.passed) if result.review else None,
+                )
+            except Exception:
+                truth_manager.restore_snapshot(snapshot)
+                _restore(draft_path, previous_draft)
+                _restore(memory_path, previous_memory)
+                raise
             return {
                 "ok": True,
                 "chapter_id": chapter_id,

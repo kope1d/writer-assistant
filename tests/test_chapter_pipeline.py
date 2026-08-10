@@ -361,3 +361,131 @@ def test_review_pipeline_recovers_only_review_on_committed_run(
     assert review_calls == 2
     final = store.load(written["run_id_v2"])
     assert final is not None and final.status == "reviewed"
+
+
+# ── multi-write 事务（ChapterRunV2 同语义） ─────────────────────────
+
+
+def _multi_draft_path(tmp_path: Path, chapter_id: str) -> Path:
+    return (
+        tmp_path
+        / "data"
+        / "novels"
+        / "demo"
+        / "data"
+        / "manuscript"
+        / "arc_001"
+        / f"{chapter_id}.md"
+    )
+
+
+def test_multi_write_rolls_back_truth_after_director_failure(
+    tmp_path: Path, monkeypatch
+):
+    """director 结算真相文件后崩溃：真相还原、草稿不落盘、任务失败。"""
+    init_project(tmp_path, "demo", "多写回滚")
+    _fake_llm(monkeypatch)
+    truth_manager = TruthFilesManager(tmp_path, "demo")
+    truth_manager.save_truth_files(TruthFiles(current_state="写前状态"))
+
+    class FailingDirector:
+        def __init__(self, agent_ctx, novel_id, style_id=""):
+            pass
+
+        async def run(self, chapter_id, temperature=0.7, run_review=True, **kwargs):
+            # 模拟真实 director.run 内的 state_settler：结算已写入真相文件，
+            # 随后（如模型失败、超时）抛异常。
+            TruthFilesManager(tmp_path, "demo").save_truth_files(
+                TruthFiles(current_state="结算后状态")
+            )
+            raise RuntimeError("director crashed after settlement")
+
+    monkeypatch.setattr(agent_module, "MultiAgentDirector", FailingDirector)
+
+    result = chapter_pipeline_module.execute_multi_agent_chapter(
+        tmp_path, {"chapter_id": "ch_002"}
+    )
+
+    assert result["ok"] is False
+    assert "director crashed" in result["error"]
+    truth = TruthFilesManager(tmp_path, "demo").load_truth_files()
+    assert truth.current_state == "写前状态"
+    assert not _multi_draft_path(tmp_path, "ch_002").exists()
+    workflow = WorkflowScheduler(tmp_path, "demo").load_workflow("ch_002")
+    assert workflow is not None and workflow.current_stage == "writing"
+
+
+def test_multi_write_removes_draft_and_restores_truth_when_sync_fails(
+    tmp_path: Path, monkeypatch
+):
+    """草稿落盘后、收尾失败：已提交的草稿被删除，真相回到写前状态。"""
+    init_project(tmp_path, "demo", "多写回滚2")
+    _fake_llm(monkeypatch)
+    truth_manager = TruthFilesManager(tmp_path, "demo")
+    truth_manager.save_truth_files(TruthFiles(current_state="写前状态"))
+
+    class FakeDirector:
+        def __init__(self, agent_ctx, novel_id, style_id=""):
+            pass
+
+        async def run(self, chapter_id, temperature=0.7, run_review=True, **kwargs):
+            TruthFilesManager(tmp_path, "demo").save_truth_files(
+                TruthFiles(current_state="结算后状态")
+            )
+            return SimpleNamespace(
+                draft=SimpleNamespace(title="第二章", content="正文内容"),
+                review=None,
+                applied_state_updates={"current_state": "结算后状态"},
+                new_concepts=[],
+            )
+
+    monkeypatch.setattr(agent_module, "MultiAgentDirector", FakeDirector)
+
+    def failing_sync(*args, **kwargs):
+        raise RuntimeError("book sync failed")
+
+    monkeypatch.setattr(chapter_pipeline_module, "_sync_book_state", failing_sync)
+
+    result = chapter_pipeline_module.execute_multi_agent_chapter(
+        tmp_path, {"chapter_id": "ch_002"}
+    )
+
+    assert result["ok"] is False
+    assert "book sync failed" in result["error"]
+    truth = TruthFilesManager(tmp_path, "demo").load_truth_files()
+    assert truth.current_state == "写前状态"
+    assert not _multi_draft_path(tmp_path, "ch_002").exists()
+
+
+def test_multi_write_preserves_previous_draft_and_truth_on_rewrite_failure(
+    tmp_path: Path, monkeypatch
+):
+    """重写已有章节时失败：旧草稿与旧真相原样保留，不丢历史内容。"""
+    init_project(tmp_path, "demo", "多写重写回滚")
+    _fake_llm(monkeypatch)
+    truth_manager = TruthFilesManager(tmp_path, "demo")
+    truth_manager.save_truth_files(TruthFiles(current_state="第一章结算"))
+    draft_path = _multi_draft_path(tmp_path, "ch_001")
+    draft_path.parent.mkdir(parents=True, exist_ok=True)
+    draft_path.write_text("# 第一章\n\n旧草稿正文", encoding="utf-8")
+
+    class FailingDirector:
+        def __init__(self, agent_ctx, novel_id, style_id=""):
+            pass
+
+        async def run(self, chapter_id, temperature=0.7, run_review=True, **kwargs):
+            TruthFilesManager(tmp_path, "demo").save_truth_files(
+                TruthFiles(current_state="第二章结算")
+            )
+            raise RuntimeError("rewrite crashed")
+
+    monkeypatch.setattr(agent_module, "MultiAgentDirector", FailingDirector)
+
+    result = chapter_pipeline_module.execute_multi_agent_chapter(
+        tmp_path, {"chapter_id": "ch_001"}
+    )
+
+    assert result["ok"] is False
+    truth = TruthFilesManager(tmp_path, "demo").load_truth_files()
+    assert truth.current_state == "第一章结算"
+    assert draft_path.read_text(encoding="utf-8") == "# 第一章\n\n旧草稿正文"
