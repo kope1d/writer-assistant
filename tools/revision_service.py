@@ -15,6 +15,7 @@ from typing import Any
 
 from tools.post_validator import PostWriteValidator
 from tools.project_lock import ProjectBusyError, ProjectWriteLock
+from tools.project_search import ProjectSearchIndex
 from tools.review_store import ReviewStore, normalize_review_issues
 from tools.revision_store import RevisionStore, RevisionStoreError
 
@@ -153,26 +154,29 @@ class RevisionService:
             raise RevisionError("部分审稿问题不存在或已变化", code="REVIEW_ISSUE_NOT_FOUND")
         path = self._chapter_path(chapter_id)
         content = path.read_text(encoding="utf-8")
-        anchors = [self._resolve_issue_anchor(content, issue) for issue in selected]
-        if any(anchor is None for anchor in anchors):
-            missing = [
-                issue["id"]
-                for issue, anchor in zip(selected, anchors, strict=True)
-                if anchor is None
-            ]
-            raise RevisionError(
-                "所选审稿问题缺少可定位的正文证据",
-                code="ISSUE_NOT_ANCHORED",
-                recoverable=True,
-                details={"issue_ids": missing},
+        anchors: list[tuple[int, int]] = []
+        degraded: list[str] = []
+        for issue in selected:
+            anchor = self._resolve_issue_anchor(content, issue)
+            if anchor is None:
+                # 降级：整章范围 + 关键词进 instruction，而不是拒绝生成提案
+                degraded.append(str(issue["id"]))
+                anchor = (0, len(content))
+            anchors.append(anchor)
+        start = min(item[0] for item in anchors)
+        end = max(item[1] for item in anchors)
+        clean_instruction = str(instruction or "").strip()
+        if degraded:
+            hint = "；".join(
+                f"问题 {issue_id} 未能精确定位正文证据，请按问题描述在章节范围内查找并修改"
+                for issue_id in degraded
             )
-        resolved = [anchor for anchor in anchors if anchor is not None]
-        start = min(item[0] for item in resolved)
-        end = max(item[1] for item in resolved)
+            clean_instruction = f"{clean_instruction}\n[定位提示] {hint}".strip()
         request = {
             "action": "review_fix",
-            "instruction": str(instruction or "").strip(),
+            "instruction": clean_instruction,
             "target_units": self._bounded_target(target_units),
+            "anchor_degraded": degraded,
         }
         generation = self._generate(
             chapter_id=chapter_id,
@@ -559,6 +563,14 @@ class RevisionService:
 
     @staticmethod
     def _resolve_issue_anchor(content: str, issue: dict[str, Any]) -> tuple[int, int] | None:
+        """把审稿问题定位到正文的 (start, end) 偏移。
+
+        四级定位，逐级降级（仍失败时由调用方兜底为整章范围）：
+        1. 显式 start_hint/end_hint（与引文一致时直接采信）
+        2. 引文精确匹配（要求唯一）
+        3. 引文模糊匹配（空白串归一为 ``\\s+``；多次出现时用前后文消歧）
+        4. 引文/摘要词项行定位（复用 project_search 的词项切分与行过滤）
+        """
         evidence = issue.get("evidence") or {}
         quote = str(evidence.get("quote") or "")
         anchor = issue.get("anchor") or {}
@@ -571,10 +583,114 @@ class RevisionService:
             if not quote or content[start_hint:end_hint] == quote:
                 return start_hint, end_hint
         if quote:
-            first = content.find(quote)
-            if first >= 0 and content.find(quote, first + 1) < 0:
-                return first, first + len(quote)
+            exact = RevisionService._quote_occurrences(content, quote)
+            if len(exact) == 1:
+                return exact[0]
+            if len(exact) > 1:
+                winner = RevisionService._disambiguate_quote(content, exact, evidence)
+                if winner is not None:
+                    return winner
+            fuzzy = RevisionService._fuzzy_quote_spans(content, quote)
+            if len(fuzzy) == 1:
+                return fuzzy[0]
+            if len(fuzzy) > 1:
+                winner = RevisionService._disambiguate_quote(content, fuzzy, evidence)
+                if winner is not None:
+                    return winner
+        span = RevisionService._locate_by_prose(content, quote, issue)
+        if span is not None:
+            return span
         return None
+
+    @staticmethod
+    def _quote_occurrences(content: str, quote: str) -> list[tuple[int, int]]:
+        spans: list[tuple[int, int]] = []
+        index = content.find(quote)
+        while index >= 0:
+            spans.append((index, index + len(quote)))
+            index = content.find(quote, index + len(quote))
+        return spans
+
+    @staticmethod
+    def _fuzzy_quote_spans(content: str, quote: str) -> list[tuple[int, int]]:
+        """空白归一匹配：引文里的空白串视作 ``\\s*``（可塌缩为无空白），
+        容忍换行/多空格漂移，也容忍正文侧把空格写没了。"""
+        parts = [part for part in re.split(r"\s+", quote.strip()) if part]
+        if not parts:
+            return []
+        pattern = re.compile(r"\s*".join(re.escape(part) for part in parts))
+        return [(m.start(), m.end()) for m in pattern.finditer(content)]
+
+    @staticmethod
+    def _disambiguate_quote(
+        content: str,
+        candidates: list[tuple[int, int]],
+        evidence: dict[str, Any],
+    ) -> tuple[int, int] | None:
+        """引文重复出现时，用 context_before/context_after 在候选窗口内的命中数消歧。"""
+        before = str(evidence.get("context_before") or "").strip()
+        after = str(evidence.get("context_after") or "").strip()
+        before_terms = [part for part in re.split(r"\s+", before) if part]
+        after_terms = [part for part in re.split(r"\s+", after) if part]
+        if not before_terms and not after_terms:
+            return None
+        best: tuple[int, int, int] | None = None
+        for start, end in candidates:
+            score = 0
+            score += sum(1 for term in before_terms if term in content[max(0, start - 400) : start])
+            score += sum(1 for term in after_terms if term in content[end : end + 400])
+            if best is None or score > best[0]:
+                best = (score, start, end)
+        if best is not None and best[0] > 0:
+            return best[1], best[2]
+        return None
+
+    @staticmethod
+    def _locate_by_prose(
+        content: str,
+        quote: str,
+        issue: dict[str, Any],
+    ) -> tuple[int, int] | None:
+        """按行定位：先逐行 probe 引文/摘要的实质行，再按词项扫描全章取最高分行。"""
+        probes = [
+            line.strip()
+            for line in quote.splitlines()
+            if len(line.strip()) >= 12
+        ] or [
+            line.strip()
+            for line in str(issue.get("summary") or "").splitlines()
+            if len(line.strip()) >= 12
+        ]
+        for probe in probes:
+            offset = content.find(probe)
+            if offset >= 0:
+                span = RevisionService._line_span(content, content[:offset].count("\n") + 1)
+                if span is not None:
+                    return span
+        terms = ProjectSearchIndex._semantic_anchor_terms(str(issue.get("summary") or ""))
+        if not terms:
+            return None
+        best_line: int | None = None
+        best_score = 0
+        for number, line in enumerate(content.splitlines(), 1):
+            stripped = line.strip()
+            if not ProjectSearchIndex._is_substantive_snippet(stripped):
+                continue
+            folded = stripped.casefold()
+            score = sum(min(6, len(term)) for term in terms if term in folded)
+            if score > best_score:
+                best_score, best_line = score, number
+        if best_line is None or best_score <= 0:
+            return None
+        return RevisionService._line_span(content, best_line)
+
+    @staticmethod
+    def _line_span(content: str, target_line: int) -> tuple[int, int] | None:
+        kept = content.splitlines(keepends=True)
+        if not kept or target_line < 1 or target_line > len(kept):
+            return None
+        start = sum(len(line) for line in kept[: target_line - 1])
+        return start, start + len(kept[target_line - 1])
 
     @staticmethod
     def _default_validator(before: str, after: str) -> list[dict[str, Any]]:

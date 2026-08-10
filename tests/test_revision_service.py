@@ -216,3 +216,152 @@ def test_revision_validation_failure_keeps_document_and_proposal_unapplied(tmp_p
         .read_text(encoding="utf-8")
     )
     assert stored["status"] == "proposed"
+
+
+def _save_issue(root: Path, chapter_id: str, *issues: dict) -> None:
+    ReviewStore(root, "demo").save(
+        chapter_id,
+        {
+            "ok": True,
+            "score": 76,
+            "passed": False,
+            "issues": len(issues),
+            "issue_details": list(issues),
+        },
+    )
+
+
+def _revision_with(root: Path, generator) -> RevisionService:
+    return RevisionService(root, "demo", generator=generator)
+
+
+def test_review_issue_whitespace_drift_anchors_via_fuzzy_match(tmp_path: Path):
+    root, chapter = _project(tmp_path)
+    content = chapter.read_text(encoding="utf-8")
+    quote = "门后没有人，只有一只  停摆的钟"  # 引文多了一个空格，精确匹配失效
+    _save_issue(
+        root,
+        "ch_001",
+        {"id": "issue_space", "dimension": "pacing", "severity": "high",
+         "summary": "停顿感不足", "evidence": {"quote": quote}, "suggestion": "增加迟疑"},
+    )
+    captured: dict = {}
+
+    def generator(payload: dict) -> dict:
+        captured.update(payload)
+        return {"replacement_text": "门后没有人，只有一只停摆的钟。", "rationale": "", "risk_flags": []}
+
+    proposal = _revision_with(root, generator).create_from_review(
+        chapter_id="ch_001", issue_ids=["issue_space"]
+    )
+
+    assert captured["selection"] == "门后没有人，只有一只停摆的钟"
+    assert proposal["request"]["anchor_degraded"] == []
+
+
+def test_review_issue_repeated_quote_disambiguated_by_context(tmp_path: Path):
+    root, _ = _project(tmp_path)
+    body = "林舟先去了东街。门后没有人。\n\n他又去了西街。门后没有人。"
+    _save_chapter(root, "demo", "ch_001", "第二章：两条街", body)
+    _save_issue(
+        root,
+        "ch_001",
+        {"id": "issue_repeat", "dimension": "pacing", "severity": "high",
+         "summary": "重复判断", "evidence": {"quote": "门后没有人", "context_before": "西街"},
+         "suggestion": "只保留一处"},
+    )
+    captured: dict = {}
+
+    def generator(payload: dict) -> dict:
+        captured.update(payload)
+        return {"replacement_text": "门后没有人", "rationale": "", "risk_flags": []}
+
+    proposal = _revision_with(root, generator).create_from_review(
+        chapter_id="ch_001", issue_ids=["issue_repeat"]
+    )
+
+    # 引文出现两次，context_before「西街」应把锚定到第二处（前文以「西街」收尾）
+    assert captured["selection"] == "门后没有人"
+    assert captured["context_before"].endswith("他又去了西街。")
+    assert proposal["request"]["anchor_degraded"] == []
+
+
+def test_review_issue_missing_quote_falls_back_to_chapter_scope(tmp_path: Path):
+    root, chapter = _project(tmp_path)
+    content = chapter.read_text(encoding="utf-8")
+    _save_issue(
+        root,
+        "ch_001",
+        {"id": "issue_ghost", "dimension": "pacing", "severity": "high",
+         "summary": "叙述节奏过慢", "evidence": {"quote": "不存在于本章的引文"},
+         "suggestion": "加快节奏"},
+    )
+    captured: dict = {}
+
+    def generator(payload: dict) -> dict:
+        captured.update(payload)
+        return {"replacement_text": content, "rationale": "", "risk_flags": []}
+
+    proposal = _revision_with(root, generator).create_from_review(
+        chapter_id="ch_001", issue_ids=["issue_ghost"]
+    )
+
+    assert proposal["request"]["anchor_degraded"] == ["issue_ghost"]
+    assert proposal["selection"]["start"] == 0
+    assert proposal["selection"]["end"] == len(content)
+    assert "[定位提示]" in proposal["request"]["instruction"]
+    assert "issue_ghost" in proposal["request"]["instruction"]
+
+
+def test_review_issue_missing_quote_anchors_via_summary_terms(tmp_path: Path):
+    root, chapter = _project(tmp_path)
+    content = chapter.read_text(encoding="utf-8")
+    # 引文完全失效，但 summary 词项「停摆」能定位到第二段
+    _save_issue(
+        root,
+        "ch_001",
+        {"id": "issue_terms", "dimension": "pacing", "severity": "high",
+         "summary": "停摆的钟需要修理", "evidence": {"quote": "幽灵引文"},
+         "suggestion": "交代钟的来由"},
+    )
+    captured: dict = {}
+
+    def generator(payload: dict) -> dict:
+        captured.update(payload)
+        return {"replacement_text": "门后没有人，只有一只停摆的钟。", "rationale": "", "risk_flags": []}
+
+    proposal = _revision_with(root, generator).create_from_review(
+        chapter_id="ch_001", issue_ids=["issue_terms"]
+    )
+
+    # 锚定到含标题全文的第 5 行（正文第二段），而不是整章
+    assert proposal["selection"]["start"] == 21
+    assert proposal["selection"]["end"] == 21 + len("门后没有人，只有一只停摆的钟。")
+    assert proposal["request"]["anchor_degraded"] == []
+
+
+def test_review_issue_partial_anchor_failure_expands_union_to_chapter(tmp_path: Path):
+    root, chapter = _project(tmp_path)
+    content = chapter.read_text(encoding="utf-8")
+    _save_issue(
+        root,
+        "ch_001",
+        {"id": "issue_ok", "dimension": "pacing", "severity": "high",
+         "summary": "停摆的钟", "evidence": {"quote": "停摆的钟"}, "suggestion": "修钟"},
+        {"id": "issue_ghost", "dimension": "pacing", "severity": "high",
+         "summary": "叙述节奏过慢", "evidence": {"quote": "幽灵引文"}, "suggestion": "加快"},
+    )
+    captured: dict = {}
+
+    def generator(payload: dict) -> dict:
+        captured.update(payload)
+        return {"replacement_text": content, "rationale": "", "risk_flags": []}
+
+    proposal = _revision_with(root, generator).create_from_review(
+        chapter_id="ch_001", issue_ids=["issue_ok", "issue_ghost"]
+    )
+
+    # 一个锚定成功、一个失败 → 失败者扩到整章，union 覆盖全章
+    assert proposal["request"]["anchor_degraded"] == ["issue_ghost"]
+    assert proposal["selection"]["start"] == 0
+    assert proposal["selection"]["end"] == len(content)
