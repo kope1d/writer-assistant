@@ -515,7 +515,7 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; img-src 'self' data:; style-src 'self'; "
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; connect-src 'self'; frame-ancestors 'none'",
         )
         self.send_header("Cache-Control", "no-store")

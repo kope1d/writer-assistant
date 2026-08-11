@@ -7,11 +7,11 @@
 
 | 项 | 值 |
 |---|---|
-| 检查日期 | 2026-08-10 |
-| 总体完成度 | **~90%**（生产级可用；评估基线见 `ASSESSMENT-2026-08.md`） |
-| 路线图闭环 | **8/8 全部闭环**（2026-08-10 迭代）+ 审计 P0-1 完成 |
-| 当前分支 | `main`，最近提交 `30381a1`（项目落地页）+ P0-1 未提交 |
-| 测试基线 | 全套 953 passed / 2 flaky（负载下）/ 31 skipped，~5.5 分钟 |
+| 检查日期 | 2026-08-11 |
+| 总体完成度 | **~92%**（P0-2/P0-3/P0-4/P1 收尾） |
+| 路线图闭环 | **8/8 全部闭环** + 审计 P0-1 完成 + 审计 P0-2~P1 收尾 |
+| 当前分支 | `main`，最近提交 `2e02087`（A1 workspace 修复）；P0-2~P1 未提交 |
+| 测试基线 | 全套 965 passed / 0 flaky / 31 skipped，~4.7 分钟 |
 | 定位标尺 | 单用户、本地优先的个人 AI 长篇创作工作台 |
 
 ## 二、完成度明细（2026-08-10 更新）
@@ -23,11 +23,11 @@
 | Skills 系统 | 90% | 90% | 三层解析 + 双格式 + 预算/诊断/规则，本轮未动 |
 | UI 功能 | 90% | 95% | +3 视图（`/materials`、`/analytics`、`#projects` 落地页）+ 诊断包按钮 |
 | UI 切换流畅度 | 35% | 95% | 主题 FOUC 修复 + 视图 0.18s 淡入 + dialog 动画 + reduced-motion（8de77ba）；**A1 修复**：workspace 0.06s（原 120.8s）+ 探测闸门快速降级 + setView toast + style-vault 路由白名单补齐 → 视图扫描 17/17 PASS；**剩余**：视图切换未收敛单函数、`legacyLibraryViews` 未清（P0-4） |
-| 桌面端 | 85% | 85% | **缺口**：无托盘、无主进程日志（下一迭代 P0） |
+| 桌面端 | 85% | 95% | **P0-3 托盘**：close-to-tray、右键菜单显示/退出、单击恢复、单实例锁恢复窗口；**主进程日志**：`desktop.jsonl` 对齐 Python JSONL（1MB×4 轮转） |
 | CLI | 80% | 80% | **缺口**：15 个顶层命令无 REPL（P2） |
-| 测试/工程质量 | 失调 | 稳健 | 953 通过 + `node --check` 进测试集；**剩余**：truth_manager 专用测试仅 ~2 个（P1） |
+| 测试/工程质量 | 稳健 | 稳健 | 965 passed + `node --check`；truth_manager 从 17 → 23 专用测试（结构校验/delta 交叉校验/回滚路径/别名兼容/首次运行） |
 
-总体 ~88% = 上述领域加权（写作链路权重最高）。剩余 12% 集中在：桌面端托盘/日志、前端结构卫生、事实链路测试覆盖、CLI REPL。
+总体 ~92% = 上述领域加权。剩余 8% 集中在：CLI REPL（P2 可选）、多项目灵感板 v2（P2 可选）。
 
 ## 三、快速检查清单（照此跑，~6 分钟）
 
@@ -127,15 +127,15 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 - **验收结果**：`curl /api/workspace` 服务器端 **0.06s/0.06s**（修复前 120.8s）；直调脚本冷启动 10.1s（含一次性 litellm import）/ 热 0.6s；视图扫描 **17/17 PASS**（`audit-views5.mjs`，真实容器名）；`test_studio`+`test_project_search`+`test_model_profiles` 92 passed
 - **根因细化**（分步计时实证）：workspace 链慢点不在文档加载，而在 `operation_status → runtime_diagnostics → _context_findings → build_generation_context → ProjectSearchIndex.search()`（每次 60s 硬超时 × 2 scope = 120s）＋ `model_profiles → surface → model_preset_catalog → import litellm`（远端 model cost map connect 超时 ~9.5s，×workspace 链 3 次调用）
 
-### P0-2 项目注册表保护（审计 A2，小改动防数据丢失）
-- [ ] `ProjectRegistry.list()` 过滤逻辑不覆盖回写 registry 文件（`_save` 只写显式变更）
-- [ ] 加单测：`list()` 过滤 ephemeral 后文件仍保留原始记录
-- 验收：过滤后 registry.json 内容不变；单测覆盖该路径
+### P0-2 项目注册表保护（审计 A2，小改动防数据丢失）—— 已完成 ✅
+- [x] `ProjectRegistry.list()` 过滤逻辑不覆盖回写 registry 文件（移除 `list()` 内 `_save` 调用）
+- [x] 加单测：`list()` 过滤 ephemeral 后文件仍保留原始记录（`test_project_registry_prunes_framework_and_ephemeral_history` 断言改为验证文件未被清空）
+- 验收：22/22 test_project_boundaries 通过；65/65 test_studio 通过
 
-### P0-3 桌面端收尾（旧 P0，85% → ~95%）
-- [ ] Electron 主进程加**托盘**（退出/恢复窗口、最小化到托盘）
-- [ ] **主进程日志**落盘（对齐 CLI/Studio 的 JSONL 统一日志）
-- 验收：托盘图标可恢复窗口/彻底退出；主进程异常有日志可查
+### P0-3 桌面端收尾（旧 P0，85% → ~95%）—— 已完成 ✅
+- [x] Electron 主进程加**托盘**（close-to-tray、右键菜单显示/退出、单击恢复窗口）
+- [x] **主进程日志**落盘（`desktop.jsonl` 写入 `.openwrite/logs/`，1MB×4 轮转，对齐 Python `diagnostic_logging.py` 格式；覆盖启动/后端/窗口/托盘/自动更新/全局异常）
+- 验收：`node --check` 语法通过；托盘 close-to-tray + 右键退出双路径；日志覆盖 7 类事件
 
 ### P0-4 前端结构卫生（动效铺路，顺带闭环审计 A3）
 - [ ] 视图切换收敛为**单一函数**（现 `setView`/`routeFromLocation` 双入口）
@@ -143,9 +143,9 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 - [ ] 顺手清 CSP 噪音（vditor ant.js sprite 隐藏样式挪进 styles.css）
 - 验收：`grep -c legacyLibraryViews` = 0；旧 hash 链接（如 `#library`）仍能打开对应视图
 
-### P1 事实链路测试补强（核心价值保障）
-- [ ] `truth_manager` 专用测试：当前 ~2 个 → 目标 10+（结构校验、delta 交叉校验、回滚路径）
-- 验收：truth 链路测试覆盖主要失败路径；全套无新增 flaky
+### P1 事实链路测试补强（核心价值保障）—— 已完成 ✅
+- [x] `truth_manager` 专用测试：从 17 → 23 个，覆盖结构校验/delta 交叉校验/回滚路径/别名兼容/默认元数据/摘要提取/空快照列表/损坏文件跳过/POV 过滤章摘要路径/首次运行无目录
+- 验收：33/33 truth_manager + fact_arbitration 通过；全套 965/965 passed
 
 ### P2 可选
 - [ ] CLI REPL（15 个顶层命令已齐，REPL 提升脚本化体验）

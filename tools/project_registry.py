@@ -110,8 +110,7 @@ class ProjectRegistry:
             root = Path(record.path).resolve()
             if self._should_remember(root) and (root / "novel_config.yaml").is_file():
                 available.append(record)
-        if available != records:
-            self._save(available[:REGISTRY_LIMIT])
+        # 过滤只作用于内存视图，不回写文件（避免 list() 静默清理 ephemeral 条目）
         return [record.to_dict() for record in available[:REGISTRY_LIMIT]]
 
     def remember(self, project_root: Path) -> None:

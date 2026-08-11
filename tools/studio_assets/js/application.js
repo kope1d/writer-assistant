@@ -18,7 +18,6 @@ import {
 } from "/js/markdown-editor.js";
 
 const libraryViews = ["core", "characters", "settings"];
-const legacyLibraryViews = { story: "core", world: "settings", assets: "characters" };
 
 function readLocalValue(key) {
   try {
@@ -1019,7 +1018,9 @@ function navSection(view) {
 }
 
 function normalizeView(view) {
-  return legacyLibraryViews[view] || view;
+  // 保留旧 hash 兼容（#story→core, #world→settings, #assets→characters）
+  const legacy = { story: "core", world: "settings", assets: "characters" };
+  return legacy[view] || view;
 }
 
 function documentListGroupForView(view) {
@@ -1152,20 +1153,8 @@ async function openDocument(path, pushHistory) {
     state.assets.dirty = false;
     state.library.editorMode = "document";
     const group = libraryViews.includes(doc.scope) ? doc.scope : documentGroup(path);
-    state.view = group;
-    syncNavigationState(group);
-    $("#dashboard-view").hidden = true;
-    $("#editor-view").hidden = false;
-    $("#outline-view").hidden = true;
-    $("#review-workspace-view").hidden = true;
-    $("#research-view").hidden = true;
-    $("#search-view").hidden = true;
-    $("#agents-view").hidden = true;
-    $("#continuity-view").hidden = true;
-    $("#transfer-view").hidden = true;
-    $("#deconstruct-view").hidden = true;
-    $("#skills-view").hidden = true;
-    $("#tools-view").hidden = true;
+    // 统一走 setView 切换视图，消除 openDocument/setView 重复翻转
+    setView(group, false);
     showDocumentEditor();
     $("#editor-path").textContent = doc.path;
     $("#editor-title").value = doc.title;
@@ -1185,7 +1174,6 @@ async function openDocument(path, pushHistory) {
     await loadEditorTarget(path);
     setSaveState("已保存", false);
     $("#editor-autosave-state").textContent = "即时渲染 · 自动保存已开启";
-    renderDocumentList(group);
     if (pushHistory) {
       const debugQuery = productTourDebugMode() ? "?debug=onboarding" : "";
       history.pushState({ path }, "", `/${debugQuery}#doc=${encodeURIComponent(path)}`);

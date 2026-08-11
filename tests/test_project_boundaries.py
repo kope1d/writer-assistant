@@ -135,8 +135,10 @@ def test_project_registry_prunes_framework_and_ephemeral_history(tmp_path: Path)
     )
     registry = ProjectRegistry(registry_path)
 
+    # list() 过滤 ephemeral/框架项目只影响内存视图，不回写文件（P0-2 修复）
     assert registry.list() == []
-    assert yaml.safe_load(registry_path.read_text(encoding="utf-8"))["projects"] == []
+    persisted = yaml.safe_load(registry_path.read_text(encoding="utf-8"))["projects"]
+    assert len(persisted) == 2  # 文件仍保留原始记录，未被 list() 静默清空
 
 
 def test_framework_detection_requires_package_and_studio(tmp_path: Path):

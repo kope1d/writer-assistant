@@ -309,3 +309,130 @@ def test_validate_truth_structure_flags_each_drift_class(tmp_path: Path):
         item["attr"] == "current_state" and item["field"] == "frontmatter"
         for item in manager.validate_truth_structure()
     )
+
+
+# ── TruthFiles 别名兼容 ──────────────────────────────────────────────
+
+
+def test_truthfiles_legacy_alias_getter():
+    t = TruthFiles(current_state="A", ledger="B", relationships="C")
+
+    assert t.particle_ledger == "B"
+    assert t.character_matrix == "C"
+
+
+def test_truthfiles_legacy_alias_setter():
+    t = TruthFiles(current_state="A", ledger="B", relationships="C")
+
+    t.particle_ledger = "新账本"
+    t.character_matrix = "新关系"
+
+    assert t.ledger == "新账本"
+    assert t.relationships == "新关系"
+
+
+def test_truthfiles_dir_excludes_metadata():
+    t = TruthFiles(current_state="A", ledger="B", relationships="C")
+
+    assert "metadata" not in dir(t)
+    assert "current_state" in dir(t)
+
+
+def test_truthfiles_unknown_attr_raises():
+    t = TruthFiles()
+
+    with pytest.raises(AttributeError):
+        _ = t.nonexistent
+
+
+# ── 默认元数据与摘要 ─────────────────────────────────────────────────
+
+
+def test_default_metadata_produces_expected_keys(tmp_path: Path):
+    manager = TruthFilesManager(tmp_path, "demo")
+
+    meta_state = manager._default_metadata("current_state", "")
+    assert meta_state["id"] == "current_state"
+    assert meta_state["type"] == "runtime_truth"
+    assert "scene" in meta_state["detail_refs"]
+
+    meta_ledger = manager._default_metadata("ledger", "")
+    assert "resources" in meta_ledger["detail_refs"]
+
+    meta_rel = manager._default_metadata("relationships", "")
+    assert "bonds" in meta_rel["detail_refs"]
+
+
+def test_summarize_truth_content_extracts_first_meaningful_line():
+    manager = TruthFilesManager(Path("unused"), "demo")
+
+    # 跳过标题和表格行，剥掉键前缀
+    assert "钟楼已修复" in manager._summarize_truth_content(
+        "# 世界状态\n\n钟楼已修复，城市恢复平静。"
+    )
+    assert "钟楼仍在运行" in manager._summarize_truth_content(
+        "| 物品 | 状态 |\n|------|------|\n关键事实：钟楼仍在运行。"
+    )
+    # 空内容
+    assert manager._summarize_truth_content("") == ""
+
+
+# ── list_snapshots ────────────────────────────────────────────────────
+
+
+def test_list_snapshots_empty(tmp_path: Path):
+    manager = _manager_with_truth(tmp_path)
+
+    assert manager.list_snapshots() == []
+
+
+def test_list_snapshots_corrupt_file_skipped(tmp_path: Path):
+    manager = _manager_with_truth(tmp_path)
+    manager.snapshots_dir.mkdir(parents=True, exist_ok=True)
+    (manager.snapshots_dir / "snapshot_1_good.json").write_text(
+        '{"id": "s1", "chapter_number": 1, "created_at": "2024-01-01T00:00:00"}',
+        encoding="utf-8",
+    )
+    (manager.snapshots_dir / "snapshot_2_bad.json").write_text(
+        "{not valid",
+        encoding="utf-8",
+    )
+
+    listed = manager.list_snapshots()
+    assert len(listed) == 1
+    assert listed[0]["id"] == "s1"
+
+
+# ── POV 伏笔过滤（章摘要辅助路径）─────────────────────────────────────
+
+
+def test_filter_hooks_by_pov_keeps_mentioned_in_summaries(tmp_path: Path):
+    manager = _manager_with_truth(tmp_path)
+    hooks = "钟楼的秘密\n城主的计划\n老钟匠的往事"
+
+    filtered = manager.filter_hooks_by_pov(
+        hooks,
+        pov_character="城主",
+        chapter_summaries="城主在第一章出现在钟楼，与林琛交谈。",
+    )
+
+    # "城主" 出现在 hooks 里 → 直接保留
+    assert "城主的计划" in filtered
+    # "林琛" 未出现在 hooks 的该行里；但 summaries 提到"城主"场景
+    # 当前启发式：只要 summaries 里任一角色出现，全保留
+    assert len(filtered.split("\n")) == 3
+
+
+# ── 首次运行（目录不存在）─────────────────────────────────────────────
+
+
+def test_load_truth_files_first_run_no_dirs(tmp_path: Path):
+    manager = TruthFilesManager(tmp_path, "fresh_novel")
+
+    truth = manager.load_truth_files()
+
+    # 首次运行不应出错，返回默认空 TruthFiles
+    assert truth.current_state == ""
+    assert truth.ledger == ""
+    assert truth.relationships == ""
+    assert truth.metadata["current_state"]["id"] == "current_state"
