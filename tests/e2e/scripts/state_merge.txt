@@ -1,0 +1,19 @@
+```yaml
+state_delta:
+  chapter_id: "ch_001"
+  operations:
+    - op: append
+      collection: current_state
+      value: "林舟发现钟声少了一拍，找到祖父日志中的七处空白页"
+    - op: append
+      collection: ledger
+      value: "林舟获得祖父日志（含七处空白页）"
+    - op: append
+      collection: relationships
+      value: "林舟得知需寻找陈家后人"
+state_updates:
+  current_state: "林舟发现钟楼钟声少了一拍，在祖父日志中发现七处空白页"
+  ledger: "林舟获得祖父日志（含七处空白页）"
+  relationships: "林舟得知需寻找陈家后人"
+chapter_summary: "林舟夜修钟楼时听见钟声少了一拍，随后在祖父日志中发现七处空白页与一句遗言，决定次日寻找陈家后人。"
+```

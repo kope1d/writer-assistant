@@ -1,0 +1,10 @@
+[
+  {
+    "dimension": 27,
+    "severity": "info",
+    "category": "敏感词检查",
+    "description": "本章正文未发现敏感内容，时间线与前文一致，未发现明显问题。",
+    "suggestion": "无需修改。",
+    "evidence": ""
+  }
+]
