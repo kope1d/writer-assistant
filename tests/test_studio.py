@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Thread
 from types import SimpleNamespace
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import ProxyHandler, Request, build_opener
 
 import pytest
@@ -2162,6 +2163,96 @@ def test_studio_serves_materials_aggregated_by_kind(tmp_path: Path):
     recipe_item = next(item for item in materials if item["kind"] == "style")
     assert recipe_item["summary"] == ""
     assert recipe_item["kind_label"] == "风格"
+
+
+def test_studio_materials_supports_cross_project_query(tmp_path: Path):
+    """素材板跨项目只读浏览：?project= 聚合目标项目素材，不切换激活项目。"""
+    proj_a = tmp_path / "proj_a"
+    proj_b = tmp_path / "proj_b"
+    init_project(proj_a, "alpha")
+    init_project(proj_b, "beta", title="第二本")
+    world_a = proj_a / "data" / "novels" / "alpha" / "data" / "world"
+    world_a.mkdir(parents=True, exist_ok=True)
+    (world_a / "alpha_world.md").write_text("# 甲世界\n\n第一本的设定。\n", encoding="utf-8")
+    world_b = proj_b / "data" / "novels" / "beta" / "data" / "world"
+    world_b.mkdir(parents=True, exist_ok=True)
+    (world_b / "beta_world.md").write_text("# 乙世界\n\n第二本的设定。\n", encoding="utf-8")
+
+    server = create_server(proj_a, port=0)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    opener = build_opener(ProxyHandler({}))
+    try:
+        with opener.open(f"{base}/api/materials") as response:
+            current_payload = json.loads(response.read().decode("utf-8"))
+        with opener.open(f"{base}/api/materials?project={quote(str(proj_b))}") as response:
+            cross_payload = json.loads(response.read().decode("utf-8"))
+        # 无效项目路径：404，不视为当前项目
+        with pytest.raises(HTTPError) as exc:
+            opener.open(f"{base}/api/materials?project={quote(str(tmp_path / 'ghost'))}")
+        assert exc.value.code == HTTPStatus.NOT_FOUND
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    current_titles = {item["title"] for item in current_payload["materials"]}
+    assert "alpha_world" in current_titles
+    assert "beta_world" not in current_titles  # 当前项目看不到 B
+    cross_titles = {item["title"] for item in cross_payload["materials"]}
+    assert "beta_world" in cross_titles
+    assert "alpha_world" not in cross_titles  # 跨项目查询不混入激活项目
+    # 素材条目带项目归属
+    beta_item = next(
+        item for item in cross_payload["materials"] if item["title"] == "beta_world"
+    )
+    assert beta_item["project_path"] == str(proj_b.resolve())
+    assert beta_item["project_title"] == "第二本"
+    # 激活项目未被切换
+    assert "alpha_world" in {item["title"] for item in current_payload["materials"]}
+
+
+def test_studio_materials_filters_pipeline_noise(tmp_path: Path):
+    """素材板排除流水线中间产物：extraction/logs/batch_results 目录与状态文件。"""
+    init_project(tmp_path, "demo")
+    novel_root_dir = tmp_path / "data" / "novels" / "demo"
+    (novel_root_dir / "data" / "world").mkdir(parents=True, exist_ok=True)
+    (novel_root_dir / "data" / "world" / "kingdom.md").write_text(
+        "# 王国\n\n核心设定。\n", encoding="utf-8"
+    )
+    noise_paths = [
+        novel_root_dir / "data" / "sources" / "ll" / "extraction" / "chunks" / "chunk_001.md",
+        novel_root_dir / "data" / "sources" / "ll" / "extraction" / "progress.json",
+        novel_root_dir / "data" / "sources" / "ll" / "extraction" / "batch_results" / "batch_000.yaml",
+        novel_root_dir / "data" / "foreshadowing" / "logs" / "dag_run.yaml",
+        novel_root_dir / "data" / "world" / "runtime_state.json",
+    ]
+    for path in noise_paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("noise\n", encoding="utf-8")
+    # runtime_state.json 必须是合法 JSON（模拟真实运行时快照）
+    (novel_root_dir / "data" / "world" / "runtime_state.json").write_text(
+        "{}", encoding="utf-8"
+    )
+
+    server = create_server(tmp_path, port=0)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    opener = build_opener(ProxyHandler({}))
+    try:
+        with opener.open(f"{base}/api/materials") as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    titles = {item["title"] for item in payload["materials"]}
+    assert "kingdom" in titles  # 正常素材保留
+    for path in noise_paths:
+        assert path.stem not in titles, f"噪音产物不应进入素材板: {path}"
 
 
 def test_studio_serves_writing_dashboard_aggregation(tmp_path: Path):

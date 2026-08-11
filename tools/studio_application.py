@@ -122,6 +122,17 @@ MATERIAL_KIND_LABELS = {
 }
 MATERIAL_SUFFIXES = {".md", ".yaml", ".yml", ".json"}
 MATERIAL_CAP = 200
+# 流水线中间产物不提升材板（见 _material_is_noise）：source_sync 的提取目录、
+# 任务日志、批处理结果与进度/运行时状态快照
+MATERIAL_NOISE_DIRS = {"extraction", "batch_results", "logs"}
+MATERIAL_NOISE_FILES = {"progress.json", "runtime_state.json"}
+
+
+def _material_is_noise(path: Path, root: Path) -> bool:
+    """素材板噪音判定：路径相对根目录，任一目录段或文件名命中则排除。"""
+    if path.name in MATERIAL_NOISE_FILES:
+        return True
+    return any(part in MATERIAL_NOISE_DIRS for part in path.relative_to(root).parts)
 
 
 def _material_summary(path: Path) -> str:
@@ -1174,10 +1185,25 @@ class StudioApplication:
             )
             raise StudioError(str(exc), status) from exc
 
-    def materials(self) -> dict[str, Any]:
-        """灵感素材板：聚合五类素材资产，最近更新优先。"""
-        if not self.initialized:
+    def materials(self, project_path: str | None = None) -> dict[str, Any]:
+        """灵感素材板：聚合五类素材资产，最近更新优先。
+
+        project_path 传入时跨项目只读浏览：不切换激活状态，仅校验目标为
+        合法项目（含 novel_config.yaml + novel_id），素材条目附带项目归属。
+        """
+        if project_path:
+            target_root, target_novel_id, target_title = self._resolve_material_project(
+                Path(project_path)
+            )
+        elif not self.initialized:
             return {"materials": []}
+        else:
+            target_root, target_novel_id, target_title = (
+                self.project_root,
+                self.novel_id,
+                str(self.config.get("title") or self.novel_id),
+            )
+        target_novel_root = novel_root(target_root, target_novel_id).resolve()
         roots = [
             ("research", "data/research"),
             ("sources", "data/sources"),
@@ -1187,7 +1213,7 @@ class StudioApplication:
         ]
         items: list[dict[str, Any]] = []
         for kind, relative in roots:
-            root = self.novel_root / relative
+            root = target_novel_root / relative
             if not root.is_dir():
                 continue
             for path in sorted(root.rglob("*")):
@@ -1195,19 +1221,23 @@ class StudioApplication:
                     path.is_file() and path.suffix.lower() in MATERIAL_SUFFIXES
                 ):
                     continue
+                if _material_is_noise(path, target_novel_root):
+                    continue
                 try:
                     stat = path.stat()
                 except OSError:
                     continue
                 items.append(
                     {
-                        "path": path.relative_to(self.novel_root).as_posix(),
+                        "path": path.relative_to(target_novel_root).as_posix(),
                         "kind": kind,
                         "kind_label": MATERIAL_KIND_LABELS[kind],
                         "title": path.stem,
                         "updated_at": int(stat.st_mtime),
                         "size": stat.st_size,
                         "summary": _material_summary(path),
+                        "project_path": str(target_root),
+                        "project_title": target_title,
                     }
                 )
                 if len(items) >= MATERIAL_CAP:
@@ -1216,6 +1246,25 @@ class StudioApplication:
                 break
         items.sort(key=lambda item: item["updated_at"], reverse=True)
         return {"materials": items}
+
+    @staticmethod
+    def _resolve_material_project(project_root: Path) -> tuple[Path, str, str]:
+        """只读解析目标项目元信息（路径/novel_id/标题），不改变激活状态。"""
+        root = Path(project_root).resolve()
+        config_path = root / "novel_config.yaml"
+        if not config_path.is_file() or is_framework_root(root):
+            raise StudioError("目标路径不是有效的项目目录", HTTPStatus.NOT_FOUND)
+        try:
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            raise StudioError(f"目标项目配置无法读取: {exc}") from exc
+        if not isinstance(config, dict) or not config.get("novel_id"):
+            raise StudioError("目标项目缺少 novel_id", HTTPStatus.BAD_REQUEST)
+        return (
+            root,
+            str(config["novel_id"]),
+            str(config.get("title") or config["novel_id"]),
+        )
 
     def dashboard(self) -> dict[str, Any]:
         """写作仪表盘：字数趋势 + 审稿分数趋势 + 叙事预测列表。"""
@@ -3955,9 +4004,14 @@ class StudioApplication:
         if not isinstance(relative_path, str) or not relative_path.strip():
             raise StudioError("缺少文档路径")
         candidate = (self.novel_root / relative_path).resolve()
+        # 素材板五类目录（research/sources/world/foreshadowing/style）加入可访问范围，
+        # 与 src/、manuscript/ 并列——素材卡片点击要能打开对应的 md 文档
         allowed_roots = [
             (self.novel_root / "src").resolve(),
             (self.novel_root / "data" / "manuscript").resolve(),
+        ] + [
+            (self.novel_root / "data" / name).resolve()
+            for name in ("research", "sources", "world", "foreshadowing", "style")
         ]
         if not any(candidate == root or root in candidate.parents for root in allowed_roots):
             raise StudioError("文档路径不在 Studio 可访问范围", HTTPStatus.FORBIDDEN)

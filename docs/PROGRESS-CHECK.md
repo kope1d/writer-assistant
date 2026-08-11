@@ -8,10 +8,10 @@
 | 项 | 值 |
 |---|---|
 | 检查日期 | 2026-08-11 |
-| 总体完成度 | **~94%**（P0-2/P0-3/P0-4/P1 收尾 + P2 CLI REPL） |
-| 路线图闭环 | **9/9 全部闭环**（P2 REPL 完成，剩多项目灵感板 v2 可选） |
-| 当前分支 | `main`，最近提交 `2e02087`（A1 workspace 修复）；P0-2~P2-REPL 待提交 |
-| 测试基线 | 全套 979 passed / 0 flaky / 31 skipped，~4.7 分钟 |
+| 总体完成度 | **~96%**（P0-2/P0-3/P0-4/P1/P2 全部收尾） |
+| 路线图闭环 | **10/10 全部闭环**（含多项目灵感素材板 v2） |
+| 当前分支 | `main`，最近提交 `38a9988`（灵感素材板 v2 跨项目浏览 + 任务 store 竞态修复） |
+| 测试基线 | 全套 981 passed / 0 flaky / 31 skipped，~4.7 分钟 |
 | 定位标尺 | 单用户、本地优先的个人 AI 长篇创作工作台 |
 
 ## 二、完成度明细（2026-08-10 更新）
@@ -19,7 +19,7 @@
 | 领域 | 评估时 | 现在 | 变化依据 |
 |---|---|---|---|
 | 写作核心链路 | 90% | 92% | 事实仲裁闭环（正则↔delta 交叉校验 + TOML 结构校验）、multi-write 快照事务 + 回滚、审稿四级锚定加固 |
-| 素材库/知识管理 | 82% | 86% | 素材孤岛打通（`data/research` 进索引根、参考 excerpt 2→4 段、采纳落库）、素材板五类聚合 |
+| 素材库/知识管理 | 82% | 92% | 素材孤岛打通（`data/research` 进索引根、参考 excerpt 2→4 段、采纳落库）、素材板五类聚合、**v2 跨项目浏览**（全部/单项目 chips、跨项目卡片点击切项目打开、流水线噪音过滤、素材目录进文档可访问范围） |
 | Skills 系统 | 90% | 90% | 三层解析 + 双格式 + 预算/诊断/规则，本轮未动 |
 | UI 功能 | 90% | 95% | +3 视图（`/materials`、`/analytics`、`#projects` 落地页）+ 诊断包按钮 |
 | UI 切换流畅度 | 35% | 95% | 主题 FOUC 修复 + 视图 0.18s 淡入 + dialog 动画 + reduced-motion（8de77ba）；**A1 修复**：workspace 0.06s（原 120.8s）+ 探测闸门快速降级 + setView toast + style-vault 路由白名单补齐 → 视图扫描 17/17 PASS；**剩余**：视图切换未收敛单函数、`legacyLibraryViews` 未清（P0-4） |
@@ -27,7 +27,7 @@
 | CLI | 80% | 95% | **P2 REPL**：`writer repl` 交互会话（msvcrt 行编辑 + 上下键历史 + 管道回退 input() + 单命令错误隔离），`test_cli_repl` 14 测 |
 | 测试/工程质量 | 稳健 | 稳健 | 965 passed + `node --check`；truth_manager 从 17 → 23 专用测试（结构校验/delta 交叉校验/回滚路径/别名兼容/首次运行） |
 
-总体 ~94% = 上述领域加权。剩余 6% 集中在：多项目灵感板 v2（P2 可选，最后一个方向）。
+总体 ~96% = 上述领域加权。剩余 4% 集中在：灵感素材板 v2 的后续打磨（素材标签体系/frontmatter 解析等长期设想，路线图内已无强制方向）。
 
 ## 三、快速检查清单（照此跑，~6 分钟）
 
@@ -38,7 +38,7 @@ cd /e/codex内文件/writer-assistant   # Windows 实际路径 E:\codex内文件
 ./.venv/Scripts/python.exe -m pytest tests/test_studio.py -q \
   --basetemp "C:/Users/MECHREVO/AppData/Local/Temp/wa-pytest-quick"
 
-# 2. 全套测试（~5.5 分钟；2 个任务测试负载下偶发超时属已知 flaky，见下）
+# 2. 全套测试（~5 分钟；任务 store 原子替换已加重试，无已知 flaky）
 ./.venv/Scripts/python.exe -m pytest tests/ -q \
   --basetemp "C:/Users/MECHREVO/AppData/Local/Temp/wa-pytest-full"
 
@@ -55,6 +55,7 @@ printf '%s\n' '--version' 'help' 'q' | ./.venv/Scripts/python.exe -m tools.cli r
 # playwright 不在本仓库时设 PLAYWRIGHT_ROOT 指向含 node_modules 的目录
 PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-projects.mjs   # 项目落地页：PASS/FAIL 逐项输出
 PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-views.mjs      # 视图冒烟：17 视图 + 旧 hash + 编辑器
+PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-materials.mjs  # 素材板 v2：项目 chips/跨项目跳转/类型过滤（需注册表 ≥1 项目）
 PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-desktop.mjs     # 桌面 E2E：窗口/后端/托盘/退出（需 desktop/node_modules + 4567 空闲）
 node tools/studio_assets/dev/verify-ui-motion.mjs                                        # UI 动效 + 主题 FOUC
 ```
@@ -64,7 +65,8 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 ## 四、已知坑（排查时先看这里）
 
 1. **pytest basetemp PermissionError**：默认 `Temp\pytest-of-MECHREVO` 有残留进程锁，**必须 `--basetemp` 指定别处**（上述命令已带）。
-2. **任务测试负载下 flaky**：`test_studio_tasks.py` 的 `_wait` 超时 30s 在批跑负载下偶发不够（ecec795 已从 15s 放宽）；隔离重跑即过，不是回归。
+2. **任务 store 文件竞态（已修复根因，读写两侧）**：Windows 上高频轮询读 + 原子替换的两个竞态——① 写侧 `_atomic_text_write` 的 `os.replace` 撞读句柄抛 `PermissionError（WinError 5）`（任务转 failed 后测试盲等 30s）；② 读侧 `load` 的 `is_file` 检查后、open 前文件被 replace 换名 → `FileNotFoundError` 被吞成 "Task not found"。修复：replace 失败重试 4 次（20/40/60/80ms 退避）+ `load` 读取失败重试 3 次 + 两个测试 `_wait` 遇终态失败立即报错附 store error（并兜底 Task not found 继续轮询）。3 文件组合（test_studio+test_studio_tasks+test_task_runner）连跑 3 遍 77 passed。
+2b. **注册表边界测试依赖 basetemp 位置**：`is_ephemeral_project_path` 只认系统 temp（`tempfile.gettempdir()`）——若 `--basetemp` 落在非 temp 盘符（如 `E:/`），`test_project_boundaries.py` 的两个 ephemeral 测试会红（项目不被过滤）。已加固：测试显式把项目建在 OS temp 下（`wa-ephemeral-{uuid}`），任何 basetemp 都过。
 3. **LightRAG 挂起**：云 embedding 端点不可达时内部无限等待，`tools/project_search.py::_run_async` 硬超时 60s + `thread.join` 到点放弃，降级精确文本搜索；测试环境靠 `tests/conftest.py` 环境隔离避免打真实云端。**A1 修复后**：进 LightRAG 前有探测闸门（失败秒级降级 + 1800s 缓存窗口），不再每次白等 60s。
 4. **本地 FastEmbed 模型需预下载**：`embedding_provider: "local"` 默认 `local_files_only=True`——模型未缓存时语义检索直接降级精确文本搜索（快速失败，不阻塞）。要启用语义检索：预先把 `BAAI/bge-small-zh-v1.5` 下到缓存，或设 `OPENWRITE_FASTEMBED_ALLOW_DOWNLOAD=true`（网络可用时自动下载，不可达时 connect 重试链会拖慢首次请求）。
 5. **CSP 控制台噪音**：vditor `icons/ant.js` 注入 inline style 被 `style-src 'self'` 拦下（`studio_http.py:518`）；实测渲染盒 0×0 零影响，纯噪音，可留待结构卫生时处理。
@@ -160,8 +162,13 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 - [x] `_build_parser()` 提取：REPL 与 `main()` 共用同一 parser，无重复定义
 - 验收：`test_cli_repl` 14 测 + 既有 CLI 子集 50 passed；管道冒烟 `--version`→`bogus-xyz`→`help`→`q` 全部符合预期
 
-### P2 可选
-- [ ] 多项目 v2：灵感素材板 v2（落地页基础已铺，素材链已打通）
+### P2 多项目灵感素材板 v2（落地页基础已铺，素材链已打通）—— 已完成 ✅
+- [x] **跨项目只读浏览**：`/api/materials?project=<path>`（URL 编码）聚合任意合法项目五类素材，不切换激活状态；未初始化（无当前项目）也能冷启动浏览；素材条目带 `project_path`/`project_title` 归属字段
+- [x] **项目 chips**：素材板顶部「全部项目 + 各项目（当前标（当前））」，全部模式并行聚合注册表全部项目（单项目失败不拖垮整体），合并后按最近更新排序
+- [x] **跨项目卡片跳转**：点击他项目素材 → 切项目 + 打开文档（`switchProject` 从 openProject 提取复用，注册表同步刷新）
+- [x] **流水线噪音过滤**：`extraction/`、`batch_results/`、`logs/` 目录与 `progress.json`、`runtime_state.json` 不进素材板
+- [x] **顺带修复（素材板 1.0 潜在缺陷）**：`_resolve_document` 可访问范围只有 src/manuscript，素材五类目录点开全报 403 → 范围扩展 research/sources/world/foreshadowing/style；结构化资产（YAML/JSON）点击给友好提示不尝试打开
+- 验收：`test_studio_materials_supports_cross_project_query` + `test_studio_materials_filters_pipeline_noise` 新增 2 测（+65 全套 67 过）；`verify-materials.mjs` 8/8 PASS（双项目真实环境：项目 chips/单项目切换/跨项目跳转/类型过滤）
 
 ## 六、维护规则
 

@@ -167,6 +167,12 @@ Workspaces include: overview, writing dashboard, outline, library, manuscript,
 creative assistant, review, AI collaboration (Goethe / Dante), project search &
 continuity, inspiration board, reference library, Skills, tools & settings.
 
+**The inspiration board browses across projects**: aggregate research, references,
+world-building, foreshadowing and style assets of the current book — or switch to
+"all projects" to browse every book in the registry at once. Clicking a card from
+another project switches to it and opens the document; pipeline intermediates
+(extraction dirs, progress files) are filtered out automatically.
+
 **Author-facing guide: [`docs/AUTHOR-MANUAL.md`](docs/AUTHOR-MANUAL.md)** — starting
 a book, the goethe→dante daily loop, style library, writing intervention, model
 config — all in plain language.

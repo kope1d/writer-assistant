@@ -1182,12 +1182,37 @@ body.is-desktop .icon-button:active {
   gap: 16px;
 }
 
-/* 灵感素材板：卡片网格 + 类型过滤 chips */
+/* 灵感素材板：卡片网格 + 项目/类型过滤 chips */
+.material-project-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.material-project-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.material-project-chip.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
 .material-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 14px 0 16px;
+  margin: 10px 0 16px;
 }
 
 .material-filter-chip {
@@ -1230,6 +1255,23 @@ body.is-desktop .icon-button:active {
 .material-card:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
+}
+
+.material-card-foreign {
+  border-style: dashed;
+}
+
+.material-card-foreign:hover {
+  border-style: solid;
+}
+
+.material-project-tag {
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 
 .material-kind {

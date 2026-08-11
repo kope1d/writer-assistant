@@ -13,8 +13,17 @@ def _wait_for(store: TaskStore, task_id: str, status: str, timeout: float = 15.0
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         task = store.load(task_id)
-        if task and task.get("status") == status:
+        if task is None:
+            time.sleep(0.01)
+            continue
+        if task.get("status") == status:
             return task
+        if task.get("status") in {"failed", "cancelled", "interrupted"}:
+            error = task.get("error") or {}
+            raise AssertionError(
+                f"task {task_id} reached {task.get('status')} before {status}: "
+                f"{error.get('code')} {error.get('message')}"
+            )
         time.sleep(0.01)
     raise AssertionError(f"task {task_id} did not reach {status}")
 

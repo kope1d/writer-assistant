@@ -104,18 +104,82 @@ async function loadResearch() {
   }
 }
 
+async function refreshProjectRegistry() {
+  // 静默刷新注册表（素材板/项目切换用，不渲染落地页）
+  try {
+    const payload = await api("/api/projects");
+    state.projects = { projects: payload.projects || [], current: payload.current };
+  } catch (_) {
+    /* 注册表不可用时退回当前项目视图 */
+  }
+}
+
 async function loadMaterials() {
   const grid = $("#materials-grid");
   if (!grid) return;
+  if (!state.projects) await refreshProjectRegistry();
+  const projectSel = state.materialsProject || "all";
   try {
-    const payload = await api("/api/materials");
-    state.materials = payload.materials || [];
+    if (projectSel === "all") {
+      // 全部项目：当前项目 + 注册表其他项目并行聚合（单个项目失败不拖垮整体）
+      const others = (state.projects?.projects || [])
+        .map((p) => p.path)
+        .filter((path) => path !== state.projects?.current);
+      const results = await Promise.allSettled([
+        api("/api/materials"),
+        ...others.map((path) => api(`/api/materials?project=${encodeURIComponent(path)}`)),
+      ]);
+      const merged = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          merged.push(...(result.value.materials || []));
+        }
+      }
+      if (!merged.length && results.every((r) => r.status === "rejected")) {
+        throw results[0].reason;
+      }
+      merged.sort((a, b) => b.updated_at - a.updated_at);
+      state.materials = merged;
+    } else {
+      const payload = await api(`/api/materials?project=${encodeURIComponent(projectSel)}`);
+      state.materials = payload.materials || [];
+    }
   } catch (error) {
     state.materials = [];
     grid.replaceChildren(materialsEmptyState(error.message || "素材加载失败"));
     return;
   }
+  renderMaterialProjectFilters();
   renderMaterials(state.materialsFilter || "all");
+}
+
+function renderMaterialProjectFilters() {
+  const root = $("#materials-project-filters");
+  if (!root) return;
+  const current = state.projects?.current;
+  const projectSel = state.materialsProject || "all";
+  const options = [{ path: "all", title: "全部项目" }];
+  const seen = new Set();
+  for (const project of state.projects?.projects || []) {
+    if (seen.has(project.path)) continue;
+    seen.add(project.path);
+    options.push({
+      path: project.path,
+      title: project.path === current ? `${project.title}（当前）` : project.title,
+    });
+  }
+  root.replaceChildren();
+  for (const option of options) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `material-project-chip${projectSel === option.path ? " active" : ""}`;
+    chip.textContent = option.title;
+    chip.addEventListener("click", () => {
+      state.materialsProject = option.path;
+      loadMaterials();
+    });
+    root.append(chip);
+  }
 }
 
 function materialsEmptyState(message) {
@@ -153,6 +217,7 @@ function renderMaterials(kind) {
     grid.append(materialsEmptyState("暂无素材——先去深度研究、参考库或资料区产生资产吧"));
     return;
   }
+  const currentProject = state.projects?.current;
   const fragment = document.createDocumentFragment();
   for (const item of items) {
     const card = document.createElement("button");
@@ -172,10 +237,38 @@ function renderMaterials(kind) {
     time.className = "material-time";
     time.textContent = formatMaterialTime(item.updated_at);
     card.append(meta, title, summary, time);
-    card.addEventListener("click", () => openDocument(item.path, true));
+    // 跨项目卡片标注项目归属，点击先切项目再打开文档
+    const isForeign = item.project_path && item.project_path !== currentProject;
+    if (isForeign) {
+      card.classList.add("material-card-foreign");
+      const badge = document.createElement("span");
+      badge.className = "material-project-tag";
+      badge.textContent = item.project_title;
+      card.append(badge);
+    }
+    card.addEventListener("click", () => openMaterialItem(item));
     fragment.append(card);
   }
   grid.append(fragment);
+}
+
+async function openMaterialItem(item) {
+  // 结构化资产（YAML/JSON）在编辑器外管理，不尝试打开
+  if (!/\.md$/i.test(item.path)) {
+    showToast(`${item.title} 是结构化资产（YAML/JSON），在素材文件区管理`);
+    return;
+  }
+  const currentProject = state.projects?.current;
+  if (item.project_path && item.project_path !== currentProject) {
+    showToast(`切换到「${item.project_title}」打开素材…`);
+    try {
+      await switchProject(item.project_path);
+    } catch (error) {
+      showToast(`切换项目失败: ${error.message}`);
+      return;
+    }
+  }
+  openDocument(item.path, true);
 }
 
 function formatMaterialTime(epochSeconds) {
@@ -2862,6 +2955,20 @@ async function saveWritingTargets(event) {
   }
 }
 
+async function switchProject(projectPath) {
+  // 切换激活项目并重载工作区（openProject / 素材板跨项目卡片共用）
+  state.workspace = await api("/api/project/open", {
+    method: "POST",
+    body: JSON.stringify({ project_path: projectPath }),
+  });
+  state.document = null;
+  state.dirty = false;
+  state.materialsProject = "all"; // 新项目的素材板回到全部项目视图
+  await refreshProjectRegistry();
+  renderWorkspace();
+  renderRecentProjects();
+}
+
 async function openProject(event) {
   event.preventDefault();
   const submit = $("#open-project-submit");
@@ -2869,14 +2976,7 @@ async function openProject(event) {
   $("#open-project-progress").textContent = "正在校验并打开作品…";
   const projectPath = $("#open-project-path").value.trim().replace(/^"|"$/g, "");
   try {
-    state.workspace = await api("/api/project/open", {
-      method: "POST",
-      body: JSON.stringify({ project_path: projectPath }),
-    });
-    state.document = null;
-    state.dirty = false;
-    renderWorkspace();
-    renderRecentProjects();
+    await switchProject(projectPath);
     $("#project-dialog").close();
     setView("dashboard");
     showToast(`已打开 ${state.workspace.snapshot.title}`);

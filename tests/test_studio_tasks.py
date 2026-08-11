@@ -15,11 +15,25 @@ from tools.studio import StudioApplication, create_server
 def _wait(app: StudioApplication, task_id: str, statuses: set[str], timeout: float = 30) -> dict:
     # 30s：连续写作/审稿任务在批量跑套件时受机器负载影响，15s 偶发
     # 超时（任务本身秒级完成，超时是调度延迟而非逻辑问题）。
+    # 任务若进入终态失败（failed/cancelled/interrupted）则立即报错，
+    # 附 store 记录的 error，避免盲等 30s。
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        task = app.get_task(task_id)["task"]
-        if task["status"] in statuses:
+        try:
+            task = app.get_task(task_id)["task"]
+        except Exception:
+            # 极端竞态：任务快照刚创建/替换瞬间读取失败，继续轮询
+            time.sleep(0.01)
+            continue
+        status = task["status"]
+        if status in statuses:
             return task
+        if status in {"failed", "cancelled", "interrupted"}:
+            error = task.get("error") or {}
+            raise AssertionError(
+                f"task {task_id} reached {status} before {statuses}: "
+                f"{error.get('code')} {error.get('message')}"
+            )
         time.sleep(0.01)
     raise AssertionError(f"task {task_id} did not reach {statuses}")
 

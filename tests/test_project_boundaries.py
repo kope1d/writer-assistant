@@ -1,5 +1,7 @@
 import subprocess
+import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import yaml
@@ -99,7 +101,9 @@ def test_project_registry_keeps_only_existing_projects(tmp_path: Path):
 
 
 def test_project_registry_does_not_remember_ephemeral_projects(tmp_path: Path):
-    project = tmp_path / "novel"
+    # 显式用 OS 临时目录构造项目：is_ephemeral_project_path 只认系统 temp，
+    # 若用 tmp_path（自定义 --basetemp 可能落在非 temp 盘符）则过滤不生效
+    project = Path(tempfile.gettempdir()) / f"wa-ephemeral-{uuid4().hex[:10]}"
     init_project(project, "demo", "临时验收小说")
     registry = ProjectRegistry(tmp_path / "registry.yaml")
 
@@ -117,7 +121,9 @@ def test_project_registry_prunes_framework_and_ephemeral_history(tmp_path: Path)
         '[project]\nname = "writer-assistant"\n', encoding="utf-8"
     )
     init_project(framework, "framework_demo", "框架误记录")
-    temporary = tmp_path / "temporary"
+    # 同 test_project_registry_does_not_remember_ephemeral_projects：
+    # ephemeral 判断只认系统 temp，项目必须真在 OS 临时目录下
+    temporary = Path(tempfile.gettempdir()) / f"wa-ephemeral-{uuid4().hex[:10]}"
     init_project(temporary, "temporary_demo", "临时验收小说")
     registry_path = tmp_path / "registry.yaml"
     registry_path.write_text(

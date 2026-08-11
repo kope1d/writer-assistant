@@ -7,6 +7,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
@@ -117,13 +118,20 @@ class TaskStore:
 
     def load(self, task_id: str) -> dict[str, Any] | None:
         path = self.snapshot_path(task_id)
-        if not path.is_file():
-            return None
-        try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError):
-            return None
-        return data if isinstance(data, dict) else None
+        # Windows 读取竞态：is_file 检查之后、open 之前，文件可能正被
+        # _atomic_text_write 的 replace 换名（重试把 rename 次数放大了），
+        # open 抛 FileNotFoundError。重试几次即可读到完整的旧版或新版。
+        for attempt in range(3):
+            try:
+                if not path.is_file():
+                    return None
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                return data if isinstance(data, dict) else None
+            except (OSError, yaml.YAMLError):
+                if attempt == 2:
+                    return None
+                time.sleep(0.01)
+        return None
 
     def list(
         self,
@@ -428,7 +436,17 @@ class TaskStore:
                 handle.flush()
                 os.fsync(handle.fileno())
                 temp_path = Path(handle.name)
-            temp_path.replace(path)
+            # Windows：任务状态被高频轮询读取（_wait 类 100Hz）时，os.replace
+            # 覆盖目标可能撞上并发读句柄抛 PermissionError（WinError 5）。
+            # 重试几次等待读句柄释放，避免轮询时序造成的偶发失败。
+            for attempt in range(4):
+                try:
+                    temp_path.replace(path)
+                    return
+                except PermissionError:
+                    if attempt == 3:
+                        raise
+                    time.sleep(0.02 * (attempt + 1))
         finally:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)

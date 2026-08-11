@@ -170,8 +170,13 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
                 self._json(studio_success_payload(self.app.research_surface(), self.request_id))
                 return
             if parsed.path == "/api/materials":
-                self.app.require_project()
-                self._json(self.app.materials())
+                # 带 project 参数 = 跨项目只读浏览，允许未激活项目（冷启动）场景
+                project_arg = parse_qs(parsed.query).get("project", [""])[0]
+                if project_arg:
+                    self._json(self.app.materials(project_path=project_arg))
+                else:
+                    self.app.require_project()
+                    self._json(self.app.materials())
                 return
             if parsed.path == "/api/dashboard":
                 self.app.require_project()
