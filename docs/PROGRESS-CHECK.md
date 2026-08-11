@@ -52,6 +52,7 @@ node --check tools/studio_assets/js/application.js
 # playwright 不在本仓库时设 PLAYWRIGHT_ROOT 指向含 node_modules 的目录
 PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-projects.mjs   # 项目落地页：PASS/FAIL 逐项输出
 PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-views.mjs      # 视图冒烟：17 视图 + 旧 hash + 编辑器
+PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-desktop.mjs     # 桌面 E2E：窗口/后端/托盘/退出（需 desktop/node_modules + 4567 空闲）
 node tools/studio_assets/dev/verify-ui-motion.mjs                                        # UI 动效 + 主题 FOUC
 ```
 
