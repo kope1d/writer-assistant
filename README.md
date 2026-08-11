@@ -103,7 +103,7 @@ Markdown / TXT / EPUB
 - Windows：`启动 Writer Assistant.bat`
 - macOS：`启动 Writer Assistant.command`
 
-全新克隆后，如果想使用 **Electron 桌面客户端**（Codex 式独立应用窗口），先执行一次：
+全新克隆后，如果想使用 **Electron 桌面客户端**，先执行一次：
 
 ```bash
 cd desktop
