@@ -51,6 +51,7 @@ node --check tools/studio_assets/js/application.js
 # 5. 浏览器验证（需服务已启动；动效脚本同理）
 # playwright 不在本仓库时设 PLAYWRIGHT_ROOT 指向含 node_modules 的目录
 PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-projects.mjs   # 项目落地页：PASS/FAIL 逐项输出
+PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-views.mjs      # 视图冒烟：17 视图 + 旧 hash + 编辑器
 node tools/studio_assets/dev/verify-ui-motion.mjs                                        # UI 动效 + 主题 FOUC
 ```
 
