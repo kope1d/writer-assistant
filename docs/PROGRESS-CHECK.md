@@ -8,10 +8,10 @@
 | 项 | 值 |
 |---|---|
 | 检查日期 | 2026-08-11 |
-| 总体完成度 | **~92%**（P0-2/P0-3/P0-4/P1 收尾） |
-| 路线图闭环 | **8/8 全部闭环** + 审计 P0-1 完成 + 审计 P0-2~P1 收尾 |
-| 当前分支 | `main`，最近提交 `2e02087`（A1 workspace 修复）；P0-2~P1 未提交 |
-| 测试基线 | 全套 965 passed / 0 flaky / 31 skipped，~4.7 分钟 |
+| 总体完成度 | **~94%**（P0-2/P0-3/P0-4/P1 收尾 + P2 CLI REPL） |
+| 路线图闭环 | **9/9 全部闭环**（P2 REPL 完成，剩多项目灵感板 v2 可选） |
+| 当前分支 | `main`，最近提交 `2e02087`（A1 workspace 修复）；P0-2~P2-REPL 待提交 |
+| 测试基线 | 全套 979 passed / 0 flaky / 31 skipped，~4.7 分钟 |
 | 定位标尺 | 单用户、本地优先的个人 AI 长篇创作工作台 |
 
 ## 二、完成度明细（2026-08-10 更新）
@@ -24,10 +24,10 @@
 | UI 功能 | 90% | 95% | +3 视图（`/materials`、`/analytics`、`#projects` 落地页）+ 诊断包按钮 |
 | UI 切换流畅度 | 35% | 95% | 主题 FOUC 修复 + 视图 0.18s 淡入 + dialog 动画 + reduced-motion（8de77ba）；**A1 修复**：workspace 0.06s（原 120.8s）+ 探测闸门快速降级 + setView toast + style-vault 路由白名单补齐 → 视图扫描 17/17 PASS；**剩余**：视图切换未收敛单函数、`legacyLibraryViews` 未清（P0-4） |
 | 桌面端 | 85% | 95% | **P0-3 托盘**：close-to-tray、右键菜单显示/退出、单击恢复、单实例锁恢复窗口；**主进程日志**：`desktop.jsonl` 对齐 Python JSONL（1MB×4 轮转） |
-| CLI | 80% | 80% | **缺口**：15 个顶层命令无 REPL（P2） |
+| CLI | 80% | 95% | **P2 REPL**：`writer repl` 交互会话（msvcrt 行编辑 + 上下键历史 + 管道回退 input() + 单命令错误隔离），`test_cli_repl` 14 测 |
 | 测试/工程质量 | 稳健 | 稳健 | 965 passed + `node --check`；truth_manager 从 17 → 23 专用测试（结构校验/delta 交叉校验/回滚路径/别名兼容/首次运行） |
 
-总体 ~92% = 上述领域加权。剩余 8% 集中在：CLI REPL（P2 可选）、多项目灵感板 v2（P2 可选）。
+总体 ~94% = 上述领域加权。剩余 6% 集中在：多项目灵感板 v2（P2 可选，最后一个方向）。
 
 ## 三、快速检查清单（照此跑，~6 分钟）
 
@@ -48,6 +48,9 @@ node --check tools/studio_assets/js/application.js
 # 4. 启动服务（默认 :4569）
 ./.venv/Scripts/python.exe -m tools.cli studio
 
+# 4b. REPL 冒烟（管道喂命令，验证会话存活）
+printf '%s\n' '--version' 'help' 'q' | ./.venv/Scripts/python.exe -m tools.cli repl
+
 # 5. 浏览器验证（需服务已启动；动效脚本同理）
 # playwright 不在本仓库时设 PLAYWRIGHT_ROOT 指向含 node_modules 的目录
 PLAYWRIGHT_ROOT="E:/Claude Code code" node tools/studio_assets/dev/verify-projects.mjs   # 项目落地页：PASS/FAIL 逐项输出
@@ -66,6 +69,7 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 4. **本地 FastEmbed 模型需预下载**：`embedding_provider: "local"` 默认 `local_files_only=True`——模型未缓存时语义检索直接降级精确文本搜索（快速失败，不阻塞）。要启用语义检索：预先把 `BAAI/bge-small-zh-v1.5` 下到缓存，或设 `OPENWRITE_FASTEMBED_ALLOW_DOWNLOAD=true`（网络可用时自动下载，不可达时 connect 重试链会拖慢首次请求）。
 5. **CSP 控制台噪音**：vditor `icons/ant.js` 注入 inline style 被 `style-src 'self'` 拦下（`studio_http.py:518`）；实测渲染盒 0×0 零影响，纯噪音，可留待结构卫生时处理。
 6. **服务端口**：CLI `studio` 默认 `:4567`（PROGRESS-CHECK 原记 4569 是审计时手动传参）；`verify-ui-motion.mjs` 默认 `:8799`（桌面后端），跑浏览器脚本前确认服务端口。
+7. **REPL 输入实现**：Windows 下 `msvcrt.getwch()` 只读控制台缓冲区，**stdin 非 TTY（管道/重定向）时必须回退 `input()`**（已实现）；测试/脚本化用管道喂命令即可，交互式终端才有行编辑与历史。
 
 ## 四·五、功能审计（2026-08-10 全量自检）
 
@@ -149,8 +153,14 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 - [x] `truth_manager` 专用测试：从 17 → 23 个，覆盖结构校验/delta 交叉校验/回滚路径/别名兼容/默认元数据/摘要提取/空快照列表/损坏文件跳过/POV 过滤章摘要路径/首次运行无目录
 - 验收：33/33 truth_manager + fact_arbitration 通过；全套 965/965 passed
 
+### P2 CLI REPL（15 个顶层命令已齐，REPL 提升交互体验）—— 已完成 ✅
+- [x] `writer repl [--prompt]`：逐条执行任意 CLI 命令，`exit/quit/q` 退出，`help/?` 列出命令
+- [x] Windows 原生行编辑（msvcrt）：左右键移动光标、Home/End、Backspace、上下键历史浏览；stdin 非 TTY（管道/重定向）自动回退 `input()`，脚本化可用
+- [x] 单命令失败不退出会话（argparse SystemExit / 命令异常均捕获继续）；项目内提示当前项目名
+- [x] `_build_parser()` 提取：REPL 与 `main()` 共用同一 parser，无重复定义
+- 验收：`test_cli_repl` 14 测 + 既有 CLI 子集 50 passed；管道冒烟 `--version`→`bogus-xyz`→`help`→`q` 全部符合预期
+
 ### P2 可选
-- [ ] CLI REPL（15 个顶层命令已齐，REPL 提升脚本化体验）
 - [ ] 多项目 v2：灵感素材板 v2（落地页基础已铺，素材链已打通）
 
 ## 六、维护规则

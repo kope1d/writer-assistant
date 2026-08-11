@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import sys
 from collections.abc import Callable
 from datetime import datetime
@@ -73,14 +74,8 @@ def _make_stdio_encoding_safe() -> None:
                 pass
 
 
-def main():
-    """CLI 主入口"""
-    _make_stdio_encoding_safe()
-    # 所有命令（含 goethe/dante/studio）共用项目级 JSONL 日志；未初始化项目不落盘
-    from tools.diagnostic_logging import setup_logging
-
-    if (Path.cwd() / "novel_config.yaml").is_file():
-        setup_logging(Path.cwd())
+def _build_parser() -> argparse.ArgumentParser:
+    """构建完整 CLI 参数解析器（main 与 REPL 共用）。"""
     from tools.version import __version__
 
     parser = argparse.ArgumentParser(
@@ -123,12 +118,26 @@ def main():
     _add_export_command(subparsers)
     _add_asset_command(subparsers)
     _add_desk_command(subparsers)
+    _add_repl_command(subparsers)
     _add_studio_command(subparsers)
     _add_desktop_command(subparsers)
     _add_doctor_command(subparsers)
     _add_agent_command(subparsers)
     _add_project_arguments(subparsers)
 
+    return parser
+
+
+def main():
+    """CLI 主入口"""
+    _make_stdio_encoding_safe()
+    # 所有命令（含 goethe/dante/studio）共用项目级 JSONL 日志；未初始化项目不落盘
+    from tools.diagnostic_logging import setup_logging
+
+    if (Path.cwd() / "novel_config.yaml").is_file():
+        setup_logging(Path.cwd())
+
+    parser = _build_parser()
     args = parser.parse_args()
 
     if not args.command:
@@ -225,6 +234,8 @@ def _dispatch_in_project(args) -> int:
         return _cmd_asset(args)
     elif args.command == "desk":
         return _cmd_desk(args)
+    elif args.command == "repl":
+        return _cmd_repl(args)
     elif args.command == "studio":
         return _cmd_studio(args)
     elif args.command == "desktop":
@@ -703,6 +714,16 @@ def _add_desk_command(subparsers):
     """desk 命令 - 小说工作台。"""
     p = subparsers.add_parser("desk", help="打开小说专用终端工作台")
     p.add_argument("--json", action="store_true", help="输出结构化 JSON")
+
+
+def _add_repl_command(subparsers):
+    """repl 命令 - 交互式会话。"""
+    p = subparsers.add_parser("repl", help="进入交互式 REPL 会话（逐条执行任意命令）")
+    p.add_argument(
+        "--prompt",
+        default="writer> ",
+        help="REPL 提示符（默认 writer> ）",
+    )
 
 
 def _add_studio_command(subparsers):
@@ -1806,6 +1827,147 @@ def _cmd_desk(args) -> int:
         print(f"  > {action}")
     print("=" * width)
     return 0
+
+
+def _cmd_repl(args) -> int:
+    """进入交互式 REPL 会话（逐条执行任意命令，exit/quit 退出）。"""
+    print("OpenWrite REPL — 输入任意 CLI 命令，exit 退出，help 查看可用命令")
+    return _run_repl(args, input_fn=None)
+
+
+def _run_repl(args, input_fn=None) -> int:
+    """REPL 主循环。独立成函数便于测试注入输入源。"""
+    parser = _build_parser()
+    prompt = getattr(args, "prompt", None) or "writer> "
+    input_fn = input_fn or _repl_input
+    history: list[str] = []
+
+    while True:
+        display = prompt
+        # 在项目内时提示当前项目名，避免多项目混切时误操作
+        project_marker = Path.cwd() / "novel_config.yaml"
+        if project_marker.is_file():
+            display = f"[{Path.cwd().name}] {prompt}"
+        try:
+            line = input_fn(display, history)
+        except KeyboardInterrupt:
+            print("\n(Ctrl+C 取消当前输入；exit 退出)")
+            continue
+        except EOFError:
+            print()
+            break
+        text = line.strip()
+        if not text:
+            continue
+        if text in {"exit", "quit", "q"}:
+            break
+        if text in {"help", "?"}:
+            parser.print_help()
+            continue
+        try:
+            sub_args = parser.parse_args(shlex.split(text))
+            if not getattr(sub_args, "command", None):
+                parser.print_help()
+                continue
+            _dispatch(sub_args)
+        except SystemExit:
+            continue  # argparse --help/--version 等主动退出，不应终止 REPL
+        except KeyboardInterrupt:
+            print("(操作已取消)")
+        except Exception as exc:  # 单条命令失败不退出会话
+            logger.error(f"错误: {exc}")
+        history.append(text)
+    return 0
+
+
+def _repl_input(prompt: str, history: list[str]) -> str:
+    """读取一行输入。POSIX 走 readline（自带历史），Windows 用 msvcrt 轻量行编辑。
+
+    Windows 下支持：左右键移动光标、Home/End、Backspace/Del、上下键浏览历史。
+    """
+    if os.name != "nt":
+        try:
+            import readline  # noqa: F401 — 启用行编辑与历史
+        except ImportError:
+            pass
+        return input(prompt)
+
+    # msvcrt 只读控制台输入缓冲区，重定向/管道下必须退回 input()
+    if not sys.stdin.isatty():
+        return input(prompt)
+
+    import msvcrt  # type: ignore[import-not-found]
+
+    buf: list[str] = []
+    cursor = 0
+    index = len(history)  # 历史浏览位置
+
+    def redraw() -> None:
+        line = "".join(buf)
+        sys.stdout.write("\r" + prompt + line + " " * 2)
+        sys.stdout.write(f"\r{prompt}{line}")
+        if cursor < len(line):
+            sys.stdout.write("\r" + prompt + line[:cursor])
+        sys.stdout.flush()
+
+    def snapshot(entry: str) -> None:
+        nonlocal buf, cursor
+        buf = list(entry)
+        cursor = len(buf)
+        redraw()
+
+    while True:
+        ch = msvcrt.getwch()
+        if ch in ("\r", "\n"):
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            return "".join(buf)
+        if ch == "\x03":  # Ctrl+C
+            raise KeyboardInterrupt
+        if ch == "\x04":  # Ctrl+D
+            raise EOFError
+        if ch == "\x1b" or ch == "\x00":  # 箭头（ESC 或旧式 \x00 前缀）
+            seq = msvcrt.getwch()
+            if seq == "[":
+                code = msvcrt.getwch()
+                if code == "A" and index > 0:  # ↑ 上一条历史
+                    index -= 1
+                    snapshot(history[index])
+                elif code == "B" and index < len(history):  # ↓ 下一条
+                    index += 1
+                    snapshot(history[index] if index < len(history) else "")
+                elif code == "C" and cursor < len(buf):  # →
+                    cursor += 1
+                    redraw()
+                elif code == "D" and cursor > 0:  # ←
+                    cursor -= 1
+                    redraw()
+                elif code in ("H", "F"):  # Home / End
+                    cursor = 0 if code == "H" else len(buf)
+                    redraw()
+            elif seq == "\x00":
+                code = msvcrt.getwch()
+                if code == "H" and index > 0:  # 旧式 ↑
+                    index -= 1
+                    snapshot(history[index])
+                elif code == "P" and index < len(history):  # 旧式 ↓
+                    index += 1
+                    snapshot(history[index] if index < len(history) else "")
+            continue
+        if ch in ("\b", "\x7f"):  # Backspace
+            if cursor > 0:
+                buf.pop(cursor - 1)
+                cursor -= 1
+                redraw()
+            continue
+        if ch == "\x16":  # Ctrl+V 粘贴用 Windows 控制台 API 由内核处理，无需介入
+            continue
+        if ord(ch) < 32:
+            continue  # 其余控制字符忽略
+        buf.insert(cursor, ch)
+        cursor += 1
+        redraw()
+    raise AssertionError("unreachable")
 
 
 def _cmd_studio(args) -> int:

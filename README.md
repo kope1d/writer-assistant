@@ -197,7 +197,7 @@ writer goethe
 writer dante
 ```
 
-所有顶层命令均支持 `--project <作品目录>`。
+所有顶层命令均支持 `--project <作品目录>`。交互式会话用 `writer repl`：逐条输入任意命令，`help` 查看命令表，`exit` 退出；Windows 下自带行编辑与上下键历史，管道/脚本喂命令同样可用，单条命令失败不会中断会话。
 
 ## 开发与测试
 

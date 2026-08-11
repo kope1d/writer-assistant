@@ -220,7 +220,11 @@ writer goethe
 writer dante
 ```
 
-All top-level commands accept `--project <novel-directory>`.
+All top-level commands accept `--project <novel-directory>`. For an interactive
+session, run `writer repl`: type any command line by line, `help` lists all
+commands, `exit` leaves the session. On Windows it ships its own line editing
+with up/down history; piped or scripted input works too, and a failing command
+never terminates the session.
 
 ## Development & Testing
 
