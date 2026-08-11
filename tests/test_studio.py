@@ -124,7 +124,8 @@ def test_studio_writer_workspace_keeps_primary_navigation_and_contextual_tools()
     styles = (assets / "styles.css").read_text(encoding="utf-8")
     primary_nav = html.split('<div class="nav-group nav-primary">', 1)[1].split("</div>", 1)[0]
 
-    assert primary_nav.count('class="nav-item') == 9
+    assert primary_nav.count('class="nav-item') == 10
+    assert 'id="style-analysis-sidebar"' in html
     assert 'data-view="style-vault"' in html
     assert 'id="style-vault-view"' in html
     assert 'data-view="research"' in html

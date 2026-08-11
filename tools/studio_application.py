@@ -962,6 +962,40 @@ class StudioApplication:
                             }
                     except (OSError, json.JSONDecodeError):
                         analysis = {"status": "invalid"}
+                # 风格提炼流水线（StyleExtractionPipeline）的批次进度实时落盘到
+                # extraction/progress.json；暴露给前端做分块级进度展示。
+                extraction: dict[str, Any] = {}
+                extraction_progress = path / "extraction" / "progress.json"
+                if extraction_progress.is_file():
+                    try:
+                        loaded = json.loads(
+                            extraction_progress.read_text(encoding="utf-8")
+                        )
+                        if isinstance(loaded, dict):
+                            batches = loaded.get("batches") or []
+                            extraction = {
+                                "status": str(loaded.get("current_phase") or ""),
+                                "total_chunks": int(loaded.get("total_chunks") or 0),
+                                "total_chars": int(loaded.get("total_chars") or 0),
+                                "completed_chunks": sum(
+                                    1
+                                    for batch in batches
+                                    if isinstance(batch, dict)
+                                    and batch.get("status") == "completed"
+                                ),
+                                "pending_chunks": sum(
+                                    1
+                                    for batch in batches
+                                    if isinstance(batch, dict)
+                                    and batch.get("status") != "completed"
+                                ),
+                                "progress_pct": round(
+                                    float(loaded.get("progress_pct") or 0), 1
+                                ),
+                                "updated_at": str(loaded.get("updated_at") or ""),
+                            }
+                    except (OSError, json.JSONDecodeError):
+                        extraction = {"status": "invalid"}
                 source_packs.append(
                     {
                         "source_id": path.name,
@@ -969,6 +1003,7 @@ class StudioApplication:
                         "style_ready": (path / "style").is_dir(),
                         "setting_ready": (path / "setting_profile.md").exists(),
                         "analysis_v2": analysis,
+                        "extraction": extraction,
                     }
                 )
         sync = self._service().sync_status()

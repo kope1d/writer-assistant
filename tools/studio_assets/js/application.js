@@ -45,6 +45,7 @@ async function loadWorkspace() {
   }
   renderWorkspace();
   renderRecentProjects();
+  restoreStyleAnalysisEntry();
   document.querySelector("#app").setAttribute("aria-busy", "false");
   if (!state.workspace.initialized) suggestProjectPath();
   if (state.workspace.initialized) refreshTasks();
@@ -2197,10 +2198,10 @@ async function importStyleVault(event) {
   }
   submit.disabled = true;
   status.classList.remove("error");
-  status.textContent = "正在导入并提炼文风（大型文本耗时较长，任务中心可查看进度）…";
+  status.textContent = "正在导入并提炼文风（进度面板已打开，可最小化到侧边栏）…";
   const sourceId = slugifyStyleName(nameInput.value);
   try {
-    await enqueueTask(
+    const task = await enqueueTask(
       "source_operation",
       {
         action: "extract",
@@ -2210,7 +2211,9 @@ async function importStyleVault(event) {
       },
       {
         label: "文风提炼已加入队列",
+        open: false,
         onComplete: async () => {
+          if (state.styleAnalysis.taskId !== task.task_id) return;
           await loadStyleVaultView();
           loadStyleVault();
           status.textContent = "提炼完成，档案已就绪，可在“写下一章”中选用。";
@@ -2219,6 +2222,7 @@ async function importStyleVault(event) {
       },
     );
     fileInput.value = "";
+    startStyleAnalysis(task.task_id, sourceId, text);
   } catch (error) {
     status.textContent = error.message;
     showToast(error.message, true);
@@ -2239,6 +2243,285 @@ async function selectStyleProfile(sourceId) {
   } catch (error) {
     showToast(error.message, true);
   }
+}
+
+// ── 文风分析进度面板 ──────────────────────────────────────────
+// 导入后立即弹出模态框展示阶段（读取→提炼→生成）+ 分块计数；
+// 可最小化/关闭到侧边栏条目（常驻入口），完成后自动弹出成果摘要，
+// 失败自动弹出红色面板并提供重试。
+
+const STYLE_ANALYSIS_POLL_MS = 2000;
+const STYLE_TERMINAL_STATUSES = ["completed", "failed", "cancelled", "interrupted"];
+
+function startStyleAnalysis(taskId, sourceId, content) {
+  const analysis = state.styleAnalysis;
+  analysis.taskId = taskId;
+  analysis.sourceId = sourceId;
+  analysis.content = content;
+  analysis.finished = false;
+  analysis.completed = false;
+  $("#style-analysis-sidebar").hidden = false;
+  $("#style-analysis-sidebar").classList.remove("style-analysis-failed");
+  $("#style-analysis-sidebar-count").textContent = "…";
+  $("#style-analysis-done").hidden = true;
+  $("#style-analysis-failed").hidden = true;
+  $("#style-analysis-progress").hidden = false;
+  $("#style-analysis-bar").style.width = "0%";
+  $("#style-analysis-count").textContent = "正在读取文本并分块…";
+  const setDefault = $("#style-analysis-set-default");
+  setDefault.disabled = false;
+  setDefault.textContent = "设为默认文风";
+  document.querySelectorAll("#style-analysis-steps .step").forEach((el) => {
+    el.classList.remove("active", "done");
+  });
+  const first = document.querySelector('#style-analysis-steps .step[data-step="1"]');
+  if (first) first.classList.add("active");
+  popupStyleAnalysisDialog({ restoreFocus: false, deferForTour: true });
+  stopStyleAnalysisPoll();
+  analysis.timer = window.setInterval(pollStyleAnalysis, STYLE_ANALYSIS_POLL_MS);
+  pollStyleAnalysis();
+}
+
+function stopStyleAnalysisPoll() {
+  if (state.styleAnalysis.timer) {
+    window.clearInterval(state.styleAnalysis.timer);
+    state.styleAnalysis.timer = null;
+  }
+}
+
+async function pollStyleAnalysis() {
+  const analysis = state.styleAnalysis;
+  if (!analysis.taskId) return;
+  const task = (state.tasks || []).find((item) => item.task_id === analysis.taskId) || null;
+  const terminal = task && STYLE_TERMINAL_STATUSES.includes(task.status);
+  let extraction = null;
+  if (task && !["failed", "cancelled", "interrupted"].includes(task.status)) {
+    try {
+      const payload = await api("/api/workspace");
+      const packs = payload.operations?.source_packs || [];
+      extraction = (packs.find((item) => item.source_id === analysis.sourceId) || {}).extraction || null;
+    } catch (_) {
+      /* 瞬时网络错误：保留上一轮数据，下轮重试 */
+    }
+  }
+  updateStyleAnalysisUI(task, extraction);
+  if (terminal) {
+    stopStyleAnalysisPoll();
+    if (task.status === "completed") await finishStyleAnalysis(task, extraction);
+    else showStyleAnalysisFailure(task);
+  }
+}
+
+function updateStyleAnalysisUI(task, extraction) {
+  // 阶段步骤条：任务阶段 → 读取/提炼/生成
+  const phase = task?.phase || "";
+  let activeStep = 1;
+  if (["queued", "reading", "preparing"].includes(phase)) activeStep = 1;
+  else if (phase === "model") activeStep = 2;
+  else if (["validating", "committing", "complete"].includes(phase)) activeStep = 3;
+  document.querySelectorAll("#style-analysis-steps .step").forEach((el) => {
+    const index = Number(el.dataset.step);
+    el.classList.toggle("active", index === activeStep);
+    el.classList.toggle("done", index < activeStep);
+  });
+  // 分块计数（提炼阶段展示实时进度）
+  const count = $("#style-analysis-count");
+  if (activeStep === 3) {
+    count.textContent = "正在生成文风档案…";
+  } else if (extraction?.total_chunks) {
+    const done = Number(extraction.completed_chunks || 0);
+    const total = Number(extraction.total_chunks);
+    const pct = Math.round((done / total) * 100);
+    $("#style-analysis-bar").style.width = `${pct}%`;
+    count.textContent = activeStep === 1
+      ? `文本已分块（共 ${total} 块），即将开始分析…`
+      : `正在分析 ${done}/${total} 块 · ${pct}%`;
+  } else {
+    $("#style-analysis-bar").style.width = "0%";
+    count.textContent = "正在读取文本并分块…";
+  }
+  renderStyleAnalysisSidebar(task, extraction);
+}
+
+function renderStyleAnalysisSidebar(task, extraction) {
+  const count = $("#style-analysis-sidebar-count");
+  const entry = $("#style-analysis-sidebar");
+  if (task && STYLE_TERMINAL_STATUSES.includes(task.status)) {
+    entry.classList.toggle("style-analysis-failed", task.status !== "completed");
+    count.textContent = task.status === "completed" ? "完成" : "失败";
+    return;
+  }
+  entry.classList.remove("style-analysis-failed");
+  if (extraction?.total_chunks) {
+    count.textContent = `${extraction.completed_chunks || 0}/${extraction.total_chunks}`;
+  } else {
+    count.textContent = "…";
+  }
+}
+
+async function finishStyleAnalysis(task, extraction) {
+  const analysis = state.styleAnalysis;
+  analysis.finished = true;
+  analysis.completed = true;
+  analysis.content = null;
+  let profile = null;
+  try {
+    const payload = await api("/api/style-vault");
+    profile = (payload.profiles || []).find((item) => item.id === analysis.sourceId) || null;
+  } catch (_) {
+    /* 摘要仍可展示基础信息 */
+  }
+  const parts = [];
+  if (extraction?.total_chars) parts.push(`${formatNumber(extraction.total_chars)} 字符`);
+  if (extraction?.total_chunks) parts.push(`${extraction.total_chunks} 个分块`);
+  const duration = taskDurationText(task);
+  if (duration) parts.push(duration);
+  const label = profile?.label || analysis.sourceId;
+  const description = profile?.description ? `：${profile.description}` : "";
+  $("#style-analysis-done-text").textContent =
+    `文风档案「${label}」已就绪${description}${parts.length ? `（${parts.join(" · ")}）` : ""}`;
+  $("#style-analysis-progress").hidden = true;
+  $("#style-analysis-failed").hidden = true;
+  $("#style-analysis-done").hidden = false;
+  document.querySelectorAll("#style-analysis-steps .step").forEach((el) => {
+    el.classList.remove("active");
+    el.classList.add("done");
+  });
+  renderStyleAnalysisSidebar(task, extraction);
+  popupStyleAnalysisDialog({ deferForTour: true });
+}
+
+function showStyleAnalysisFailure(task) {
+  const analysis = state.styleAnalysis;
+  analysis.finished = true;
+  analysis.content = null;
+  const reason = task?.error?.message
+    || (task?.status === "cancelled" ? "分析已取消。" : "分析被中断。");
+  $("#style-analysis-failed-text").textContent = `文风分析未完成：${reason}`;
+  $("#style-analysis-progress").hidden = true;
+  $("#style-analysis-done").hidden = true;
+  $("#style-analysis-failed").hidden = false;
+  document.querySelectorAll("#style-analysis-steps .step").forEach((el) => {
+    el.classList.remove("active");
+  });
+  renderStyleAnalysisSidebar(task, null);
+  popupStyleAnalysisDialog({ deferForTour: true });
+}
+
+async function retryStyleAnalysis() {
+  const analysis = state.styleAnalysis;
+  if (!analysis.content) return;
+  const sourceId = analysis.sourceId;
+  const content = analysis.content;
+  try {
+    const task = await enqueueTask(
+      "source_operation",
+      { action: "extract", source_id: sourceId, content, focus: "style" },
+      {
+        label: "文风提炼已重新加入队列",
+        open: false,
+        onComplete: async () => {
+          if (state.styleAnalysis.taskId !== task.task_id) return;
+          await loadStyleVaultView();
+          loadStyleVault();
+        },
+      },
+    );
+    startStyleAnalysis(task.task_id, sourceId, content);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function popupStyleAnalysisDialog({ restoreFocus = false, deferForTour = false } = {}) {
+  const dialog = $("#style-analysis-dialog");
+  if (dialog.open) return;
+  // 新手引导进行中：自动弹出让路（条目仍实时更新），引导结束后补弹
+  if (deferForTour && state.productTour.active) {
+    state.styleAnalysis.pendingPopup = true;
+    return;
+  }
+  state.styleAnalysis.pendingPopup = false;
+  const previous = restoreFocus ? document.activeElement : null;
+  try {
+    dialog.showModal();
+  } catch (_) {
+    // 其他模态框已打开（如任务中心）：不强占，侧边栏条目仍保留入口
+    return;
+  }
+  // 自动弹出不抢焦点：把焦点还回用户正在操作的元素
+  if (previous && previous.isConnected && typeof previous.focus === "function") {
+    previous.focus();
+  }
+}
+
+function openStyleAnalysisDialog() {
+  const analysis = state.styleAnalysis;
+  if (!analysis.sourceId) return;
+  if (analysis.finished && analysis.completed && !analysis.taskId) {
+    showStyleAnalysisSummary();
+    return;
+  }
+  popupStyleAnalysisDialog({ restoreFocus: false });
+  pollStyleAnalysis();
+}
+
+async function showStyleAnalysisSummary() {
+  const analysis = state.styleAnalysis;
+  if (!analysis.sourceId) return;
+  let extraction = null;
+  let profile = null;
+  try {
+    const [workspacePayload, vaultPayload] = await Promise.all([
+      api("/api/workspace"),
+      api("/api/style-vault"),
+    ]);
+    const packs = workspacePayload.operations?.source_packs || [];
+    extraction = (packs.find((item) => item.source_id === analysis.sourceId) || {}).extraction || null;
+    profile = (vaultPayload.profiles || []).find((item) => item.id === analysis.sourceId) || null;
+  } catch (_) {
+    /* 摘要仍可展示基础信息 */
+  }
+  const parts = [];
+  if (extraction?.total_chars) parts.push(`${formatNumber(extraction.total_chars)} 字符`);
+  if (extraction?.total_chunks) parts.push(`${extraction.total_chunks} 个分块`);
+  const label = profile?.label || analysis.sourceId;
+  const description = profile?.description ? `：${profile.description}` : "";
+  $("#style-analysis-done-text").textContent =
+    `文风档案「${label}」已就绪${description}${parts.length ? `（${parts.join(" · ")}）` : ""}`;
+  $("#style-analysis-progress").hidden = true;
+  $("#style-analysis-failed").hidden = true;
+  $("#style-analysis-done").hidden = false;
+  document.querySelectorAll("#style-analysis-steps .step").forEach((el) => {
+    el.classList.remove("active");
+    el.classList.add("done");
+  });
+  const setDefault = $("#style-analysis-set-default");
+  setDefault.disabled = false;
+  setDefault.textContent = "设为默认文风";
+  popupStyleAnalysisDialog({ restoreFocus: false });
+}
+
+function taskDurationText(task) {
+  const start = Date.parse(task?.started_at || task?.created_at || "");
+  const end = Date.parse(task?.completed_at || "");
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return "";
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
+  if (seconds < 60) return `${seconds} 秒`;
+  return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+}
+
+// 重载后恢复常驻入口：作品里已有提炼完成的风格档案时，侧边栏条目保持可见。
+function restoreStyleAnalysisEntry() {
+  const packs = state.workspace?.operations?.source_packs || [];
+  const done = packs.find((pack) => pack.extraction?.status === "done" && pack.style_ready);
+  if (!done) return;
+  state.styleAnalysis.sourceId = done.source_id;
+  state.styleAnalysis.taskId = "";
+  state.styleAnalysis.finished = true;
+  state.styleAnalysis.completed = true;
+  $("#style-analysis-sidebar").hidden = false;
+  $("#style-analysis-sidebar-count").textContent = "完成";
 }
 
 function documentGroup(path) {
@@ -2894,6 +3177,11 @@ function finishProductTour() {
   state.productTour.step = "";
   $("#product-tour").hidden = true;
   if (!productTourDebugMode()) writeLocalValue(productTourStorageKey, "done");
+  // 引导期间被挂起的文风分析弹窗：现在补弹
+  if (state.styleAnalysis?.pendingPopup) {
+    state.styleAnalysis.pendingPopup = false;
+    popupStyleAnalysisDialog();
+  }
   showToast("引导已完成。随时可从总览重新打开。");
 }
 
@@ -6759,6 +7047,32 @@ function bindEvents() {
     const button = event.target.closest("[data-select-style]");
     if (button) selectStyleProfile(button.dataset.selectStyle);
   });
+  $("#style-analysis-sidebar").addEventListener("click", openStyleAnalysisDialog);
+  $("#style-analysis-close").addEventListener("click", () => $("#style-analysis-dialog").close());
+  $("#style-analysis-minimize").addEventListener("click", () => $("#style-analysis-dialog").close());
+  $("#style-analysis-set-default").addEventListener("click", async () => {
+    const sourceId = state.styleAnalysis.sourceId;
+    if (!sourceId) return;
+    try {
+      const payload = await api("/api/style-vault", {
+        method: "POST",
+        body: JSON.stringify({ action: "select", source_id: sourceId }),
+      });
+      renderStyleVault(payload);
+      loadStyleVault();
+      showToast("已设为默认文风");
+      const button = $("#style-analysis-set-default");
+      button.disabled = true;
+      button.textContent = "已是默认文风";
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+  $("#style-analysis-open-vault").addEventListener("click", () => {
+    $("#style-analysis-dialog").close();
+    setView("style-vault");
+  });
+  $("#style-analysis-retry").addEventListener("click", retryStyleAnalysis);
   $("#review-close").addEventListener("click", () => $("#review-dialog").close());
   $("#review-current-chapter").addEventListener("click", reviewSelectedWorkspaceChapter);
   $("#review-severity-filter").addEventListener("change", renderReviewWorkspace);

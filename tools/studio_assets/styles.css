@@ -5955,6 +5955,116 @@ dialog[open]::backdrop {
 .task-detail-events span { color: var(--muted); }
 .controlled-write-dialog { width: min(560px, calc(100vw - 32px)); }
 
+/* ── 文风分析进度面板 ─────────────────────────────────────── */
+.style-analysis-entry small {
+  margin-left: auto;
+  color: var(--accent-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 700;
+}
+.style-analysis-entry.style-analysis-failed small { color: var(--danger); }
+
+.style-analysis-dialog { width: min(460px, calc(100vw - 32px)); }
+.style-analysis-content { padding: 22px; }
+.style-analysis-header-actions { display: flex; gap: 8px; }
+
+.phase-steps {
+  display: flex;
+  margin: 14px 0 18px;
+  padding: 0;
+  gap: 8px;
+  list-style: none;
+}
+.phase-steps .step {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  transition: border-color 0.25s, color 0.25s, background 0.25s;
+}
+.phase-steps .step::before {
+  content: attr(data-step);
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+.phase-steps .step.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.phase-steps .step.active::before { background: var(--accent-strong); color: var(--surface); }
+.phase-steps .step.done {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: var(--success-soft);
+  color: var(--success);
+}
+.phase-steps .step.done::before { background: var(--success); color: var(--surface); content: "✓"; }
+
+.style-analysis-progress { margin: 2px 0 4px; }
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-strong);
+}
+.progress-track i {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.style-analysis-count { margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+
+.style-analysis-result {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 6px;
+}
+.style-analysis-result.done {
+  border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+  background: var(--success-soft);
+  color: var(--text);
+}
+.style-analysis-result.failed {
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.style-analysis-result-text { margin: 0; font-size: 11px; line-height: 1.6; }
+
+.style-analysis-dialog[open] { animation: style-analysis-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.style-analysis-dialog::backdrop { animation: style-analysis-fade 0.28s ease; }
+@keyframes style-analysis-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes style-analysis-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .asset-header-actions {
   display: flex;
   flex: 0 0 auto;

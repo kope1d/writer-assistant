@@ -58,6 +58,15 @@ export const state = {
     profile: null,
     adoptionPreview: null,
   },
+  styleAnalysis: {
+    taskId: "",
+    sourceId: "",
+    content: null,
+    finished: false,
+    completed: false,
+    pendingPopup: false,
+    timer: null,
+  },
   library: {
     query: "",
     category: "all",

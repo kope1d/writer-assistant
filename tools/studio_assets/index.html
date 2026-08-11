@@ -94,6 +94,7 @@
             <button class="nav-item" type="button" data-view="review"><svg><use href="#icon-review"/></svg><span>审稿</span></button>
             <button class="nav-item" type="button" data-view="core" data-nav-section="library"><svg><use href="#icon-book"/></svg><span>资料库</span></button>
             <button class="nav-item" type="button" data-view="style-vault"><svg><use href="#icon-pen"/></svg><span>风格档案馆</span></button>
+            <button id="style-analysis-sidebar" class="nav-item style-analysis-entry" type="button" hidden aria-label="文风分析进度"><svg><use href="#icon-pen"/></svg><span>文风分析</span><small id="style-analysis-sidebar-count">…</small></button>
             <button class="nav-item" type="button" data-view="agents" data-nav-section="agents"><svg><use href="#icon-sparkles"/></svg><span>AI 协作</span></button>
           </div>
           <details class="nav-tools">
@@ -1719,6 +1720,40 @@
       </div>
       <p id="task-detail-meta" class="dialog-note"></p>
       <ol id="task-detail-events" class="task-detail-events"></ol>
+    </div>
+  </dialog>
+
+  <dialog id="style-analysis-dialog" class="write-dialog style-analysis-dialog">
+    <div class="style-analysis-content">
+      <div class="dialog-header">
+        <div><p class="eyebrow">STYLE ANALYSIS</p><h2 id="style-analysis-title">文风分析</h2></div>
+        <div class="style-analysis-header-actions">
+          <button id="style-analysis-minimize" class="icon-button" type="button" title="最小化到侧边栏" aria-label="最小化到侧边栏">▁</button>
+          <button id="style-analysis-close" class="icon-button" type="button" title="关闭（可在侧边栏重新打开）" aria-label="关闭">×</button>
+        </div>
+      </div>
+      <ol id="style-analysis-steps" class="phase-steps" aria-label="分析阶段">
+        <li class="step active" data-step="1">读取</li>
+        <li class="step" data-step="2">提炼</li>
+        <li class="step" data-step="3">生成</li>
+      </ol>
+      <div id="style-analysis-progress" class="style-analysis-progress">
+        <div class="progress-track"><i id="style-analysis-bar"></i></div>
+        <p id="style-analysis-count" class="style-analysis-count">正在读取文本并分块…</p>
+      </div>
+      <div id="style-analysis-done" class="style-analysis-result done" hidden>
+        <p id="style-analysis-done-text" class="style-analysis-result-text"></p>
+        <div class="dialog-actions">
+          <button id="style-analysis-set-default" class="primary-button" type="button">设为默认文风</button>
+          <button id="style-analysis-open-vault" class="quiet-button" type="button">前往风格档案馆</button>
+        </div>
+      </div>
+      <div id="style-analysis-failed" class="style-analysis-result failed" hidden>
+        <p id="style-analysis-failed-text" class="style-analysis-result-text"></p>
+        <div class="dialog-actions">
+          <button id="style-analysis-retry" class="primary-button" type="button">重试</button>
+        </div>
+      </div>
     </div>
   </dialog>
 
