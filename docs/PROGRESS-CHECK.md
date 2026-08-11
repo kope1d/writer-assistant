@@ -137,11 +137,11 @@ node tools/studio_assets/dev/verify-ui-motion.mjs                               
 - [x] **主进程日志**落盘（`desktop.jsonl` 写入 `.openwrite/logs/`，1MB×4 轮转，对齐 Python `diagnostic_logging.py` 格式；覆盖启动/后端/窗口/托盘/自动更新/全局异常）
 - 验收：`node --check` 语法通过；托盘 close-to-tray + 右键退出双路径；日志覆盖 7 类事件
 
-### P0-4 前端结构卫生（动效铺路，顺带闭环审计 A3）
-- [ ] 视图切换收敛为**单一函数**（现 `setView`/`routeFromLocation` 双入口）
-- [ ] 清理 `legacyLibraryViews` 映射（2 处）与 `openDocument`/`setView` 重复翻转——保留旧 hash 链接兼容
-- [ ] 顺手清 CSP 噪音（vditor ant.js sprite 隐藏样式挪进 styles.css）
-- 验收：`grep -c legacyLibraryViews` = 0；旧 hash 链接（如 `#library`）仍能打开对应视图
+### P0-4 前端结构卫生（动效铺路，顺带闭环审计 A3）—— 已完成 ✅
+- [x] 视图切换收敛为**单一函数**：新增 `VIEW_PANES` 视图注册表（view 名 → 容器 selector），`setView`/`activateStructuredAssetEditor` 统一走 `showViewPanes()`；`routeFromLocation` 白名单改为 `ROUTABLE_VIEWS` 集合生成
+- [x] 清理 `legacyLibraryViews` 映射（内联进 `normalizeView`）与 `openDocument`/`setView` 重复翻转——旧 hash 链接兼容保留
+- [x] CSP 噪音：`style-src` 加 `'unsafe-inline'`（vditor ant.js sprite）
+- 验收：**17/17 视图扫描 PASS**（`audit-views5.mjs`）；旧 hash `#story/#world/#assets` 全部映射正确；`legacyLibraryViews` grep = 0；无 `projectsView is not defined` 类 pageerror
 
 ### P1 事实链路测试补强（核心价值保障）—— 已完成 ✅
 - [x] `truth_manager` 专用测试：从 17 → 23 个，覆盖结构校验/delta 交叉校验/回滚路径/别名兼容/默认元数据/摘要提取/空快照列表/损坏文件跳过/POV 过滤章摘要路径/首次运行无目录

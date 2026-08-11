@@ -1023,6 +1023,48 @@ function normalizeView(view) {
   return legacy[view] || view;
 }
 
+// 视图注册表：view 名 → 容器 selector。新增视图只需在这里加一行。
+const VIEW_PANES = [
+  ["dashboard", "#dashboard-view"],
+  ["projects", "#projects-view"],
+  ["analytics", "#analytics-view"],
+  ["outline", "#outline-view"],
+  ["review", "#review-workspace-view"],
+  ["materials", "#materials-view"],
+  ["research", "#research-view"],
+  ["search", "#search-view"],
+  ["agents", "#agents-view"],
+  ["continuity", "#continuity-view"],
+  ["transfer", "#transfer-view"],
+  ["deconstruct", "#deconstruct-view"],
+  ["style-vault", "#style-vault-view"],
+  ["skills", "#skills-view"],
+  ["tools", "#tools-view"],
+];
+
+// 可路由视图集合（routeFromLocation 白名单）：注册表面板 + 文档/大纲 + 旧 hash 兼容
+const ROUTABLE_VIEWS = new Set([
+  ...VIEW_PANES.map(([name]) => name),
+  ...libraryViews,
+  "chapters",
+  "outline",
+  "review",
+  "research",
+  "materials",
+  "story",
+  "world",
+  "assets",
+]);
+
+// 切换视图面板：非编辑器视图只亮一个面板；编辑器视图（文档/资产）隐藏所有注册表面板
+function showViewPanes(activeView) {
+  const editorMode = activeView === "editor";
+  for (const [name, selector] of VIEW_PANES) {
+    $(selector).hidden = editorMode ? true : name !== activeView;
+  }
+  $("#editor-view").hidden = !editorMode;
+}
+
 function documentListGroupForView(view) {
   const normalized = normalizeView(view);
   if (normalized === "outline") return "outline";
@@ -1078,29 +1120,10 @@ function setView(view, pushHistory = true) {
   const toolsNav = $(".nav-tools");
   if (toolsNav && ["continuity", "research", "search", "transfer", "deconstruct", "skills", "tools"].includes(view)) toolsNav.open = true;
   const dashboard = view === "dashboard";
-  const projectsView = view === "projects";
-  const analyticsView = view === "analytics";
   const outlineView = view === "outline";
-  const reviewView = view === "review";
-  const materialsView = view === "materials";
-  const researchView = view === "research";
   const documentView = ["chapters", ...libraryViews].includes(view);
-  $("#dashboard-view").hidden = !dashboard;
-  $("#projects-view").hidden = !projectsView;
-  $("#analytics-view").hidden = !analyticsView;
-  $("#editor-view").hidden = !documentView;
-  $("#outline-view").hidden = !outlineView;
-  $("#review-workspace-view").hidden = !reviewView;
-  $("#materials-view").hidden = !materialsView;
-  $("#research-view").hidden = !researchView;
-  $("#search-view").hidden = view !== "search";
-  $("#agents-view").hidden = view !== "agents";
-  $("#continuity-view").hidden = view !== "continuity";
-  $("#transfer-view").hidden = view !== "transfer";
-  $("#deconstruct-view").hidden = view !== "deconstruct";
-  $("#style-vault-view").hidden = view !== "style-vault";
-  $("#skills-view").hidden = view !== "skills";
-  $("#tools-view").hidden = view !== "tools";
+  // 面板切换统一走注册表：文档视图 → 编辑器容器，其余 → 对应面板
+  showViewPanes(documentView ? "editor" : view);
   renderDocumentList(documentListGroupForView(view));
   const activePath = state.library.editorMode === "asset"
     ? state.assets.draft?.path
@@ -1122,11 +1145,11 @@ function setView(view, pushHistory = true) {
   if (view === "agents") loadAgentSurface(state.agent);
   if (view === "continuity") loadContinuity();
   if (view === "style-vault") loadStyleVaultView();
-  if (projectsView) loadProjects();
-  if (analyticsView) loadAnalytics();
-  if (materialsView) loadMaterials();
-  if (researchView) loadResearch();
-  if (reviewView) renderReviewWorkspace();
+  if (view === "projects") loadProjects();
+  if (view === "analytics") loadAnalytics();
+  if (view === "materials") loadMaterials();
+  if (view === "research") loadResearch();
+  if (view === "review") renderReviewWorkspace();
   updateRoutedModelIndicator();
   toggleMobileNavigation(false);
   if (pushHistory) {
@@ -1193,18 +1216,8 @@ function activateStructuredAssetEditor(asset, options = {}) {
   state.dirty = false;
   state.library.editorMode = "asset";
   syncNavigationState(group);
-  $("#dashboard-view").hidden = true;
-  $("#editor-view").hidden = false;
-  $("#outline-view").hidden = true;
-  $("#review-workspace-view").hidden = true;
-  $("#research-view").hidden = true;
-  $("#search-view").hidden = true;
-  $("#agents-view").hidden = true;
-  $("#continuity-view").hidden = true;
-  $("#transfer-view").hidden = true;
-  $("#deconstruct-view").hidden = true;
-  $("#skills-view").hidden = true;
-  $("#tools-view").hidden = true;
+  // 统一走注册表：资产编辑器 → 编辑器容器（隐藏所有注册表面板）
+  showViewPanes("editor");
   $("#document-editor-pane").hidden = true;
   $("#asset-editor-pane").hidden = false;
   $("#document-editor-actions").hidden = true;
@@ -6856,7 +6869,7 @@ async function routeFromLocation() {
       (item) => item.asset_kind === kind && item.asset_id === id,
     ) || { kind, id, asset_kind: kind, asset_id: id, scope };
     await openStructuredAsset(summary, false);
-  } else if (["search", "outline", "chapters", "review", "core", "story", "characters", "settings", "world", "assets", "agents", "continuity", "transfer", "deconstruct", "skills", "tools", "research", "materials", "analytics", "projects", "style-vault"].includes(hash)) {
+  } else if (ROUTABLE_VIEWS.has(hash)) {
     setView(hash, false);
   } else {
     setView("dashboard", false);
