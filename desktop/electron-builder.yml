@@ -13,6 +13,13 @@ extraResources:
       - icon.png
   - from: backend-dist/writer-backend
     to: backend/writer-backend
+  # 本地 embedding 模型缓存（约 182MB）：不带则语义搜索开箱即坏
+  # （fastembed 首次用需从 HuggingFace 下载，国内不可达）。
+  # 发布前运行 packaging/prepare-release.ps1 校验缓存完整性。
+  - from: ../.fastembed-cache
+    to: .fastembed-cache
+    filter:
+      - "**/*"
 win:
   icon: build/icon.ico
   target:

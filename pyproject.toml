@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "writer-assistant"
 version = "0.2.2"
 description = "Writer Assistant 个人 AI 长篇小说创作工作台（基于 OpenWrite 改造）"
-license = "Apache-2.0"
+license = { text = "Apache-2.0" }
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
