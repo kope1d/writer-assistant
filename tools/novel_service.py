@@ -42,6 +42,11 @@ class NovelServiceError(RuntimeError):
         self.code = code
 
 
+# 单次来源提取/分析的合理工作上限：50 块 × 块大小 ≈ 150 万字符。
+# 超过说明输入远超单次任务预期，应在入口快速失败而非让 LLM 循环数小时。
+MAX_SOURCE_CHUNKS = 50
+
+
 class NovelApplicationService:
     """One application boundary shared by CLI, Studio and agents."""
 
@@ -591,12 +596,21 @@ class NovelApplicationService:
         if chunk_size <= 0:
             raise NovelServiceError("分块字数必须大于 0", code="INVALID_INPUT")
         executor = self._source_executor or self._default_source_executor
+        content = source_file.read_text(encoding="utf-8")
+        chunk_count = (len(content) + chunk_size - 1) // chunk_size
+        if chunk_count > MAX_SOURCE_CHUNKS:
+            raise NovelServiceError(
+                f"来源文本过大（约 {chunk_count} 块，上限 {MAX_SOURCE_CHUNKS} 块，"
+                f"每块 {chunk_size} 字符）：请裁剪来源，"
+                "或使用带分块预算的分析功能（analyze_v2）",
+                code="SOURCE_TOO_LARGE",
+            )
         payload = {
             "source_id": source_id,
             "source_file": str(source_file),
             "focus": focus,
             "chunk_size": chunk_size,
-            "content": source_file.read_text(encoding="utf-8"),
+            "content": content,
         }
         try:
             result = executor(self.project_root, payload)

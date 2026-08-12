@@ -484,3 +484,19 @@ def test_promotion_rejects_changed_baseline_and_deleted_source_becomes_stale(tmp
     assert deleted["manifest"]["change_status"] == "deleted"
     assert deleted["manifest"]["status"] == "stale"
     assert service.status("one")["complete"] is False
+
+
+def test_prepare_rejects_source_exceeding_max_chunks(tmp_path: Path):
+    """护栏：超过 MAX_SOURCE_CHUNKS 块的来源在入口快速失败，而非让 LLM 循环数小时。"""
+    service = _service(tmp_path)
+    # 小 budget 制造大量块：60 块 × 500 token
+    text = _text(chapters=60, body_size=240)
+    with pytest.raises(SourceAnalysisError) as exc:
+        service.prepare(
+            "oversized",
+            text,
+            relative_name="oversized.txt",
+            input_budget_tokens=500,
+        )
+    assert exc.value.code == "SOURCE_TOO_LARGE"
+    assert "50" in str(exc.value)

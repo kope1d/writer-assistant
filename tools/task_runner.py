@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+import logging
+import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
 from tools.task_store import TASK_PHASES, TaskStore, TaskStoreError
+
+log = logging.getLogger(__name__)
+
+# 看门狗：任务超过该秒数无任何心跳（updated_at 未变化）即视为卡死。
+# 先协作请求取消（给 handler 检查点机会），宽限期内仍无进展则强制中断。
+STUCK_AFTER_SECONDS = 600  # 10 分钟
+STUCK_GRACE_SECONDS = 120  # 协作取消后再给 2 分钟
+WATCHDOG_TICK_SECONDS = 60
 
 
 class TaskCancelled(RuntimeError):
@@ -85,6 +97,13 @@ class PersistentTaskRunner:
         self._futures: dict[str, Future[Any]] = {}
         self._lock = Lock()
         self.recovered = self.store.recover_interrupted()
+        self._watchdog_stop = threading.Event()
+        self._watchdog = threading.Thread(
+            target=self._watchdog_loop,
+            name=f"openwrite-{self.novel_id}-watchdog",
+            daemon=True,
+        )
+        self._watchdog.start()
 
     def register(self, task_type: str, handler: TaskHandler) -> None:
         self.handlers[task_type] = handler
@@ -169,7 +188,61 @@ class PersistentTaskRunner:
         )
 
     def shutdown(self, *, wait: bool = False) -> None:
+        self._watchdog_stop.set()
         self._executor.shutdown(wait=wait, cancel_futures=False)
+
+    def _watchdog_loop(self) -> None:
+        """周期扫描 running 任务：超时无心跳 → 协作取消 → 宽限后强制中断。"""
+        while not self._watchdog_stop.wait(WATCHDOG_TICK_SECONDS):
+            try:
+                self._watchdog_tick()
+            except Exception:
+                log.exception("watchdog tick failed")
+
+    def _watchdog_tick(self) -> None:
+        now = datetime.now(timezone.utc)
+        for task in self.store.list(statuses={"running"}, limit=500):
+            task_id = str(task.get("task_id") or "")
+            if not task_id:
+                continue
+            updated_raw = task.get("updated_at")
+            if not updated_raw:
+                continue
+            try:
+                updated = datetime.fromisoformat(str(updated_raw))
+            except ValueError:
+                continue
+            age = (now - updated).total_seconds()
+            if age <= STUCK_AFTER_SECONDS:
+                continue
+            if task.get("cancel_requested"):
+                if age > STUCK_AFTER_SECONDS + STUCK_GRACE_SECONDS:
+                    self.store.transition(
+                        task_id,
+                        status="interrupted",
+                        updates={
+                            "error": {
+                                "code": "STUCK_TIMEOUT",
+                                "message": (
+                                    f"任务超过 {STUCK_AFTER_SECONDS}s 无心跳，"
+                                    f"协作取消后宽限 {STUCK_GRACE_SECONDS}s 仍无进展，"
+                                    "已自动中断；可从持久化阶段恢复重试"
+                                ),
+                                "recoverable": True,
+                            }
+                        },
+                        event="task_stuck_interrupted",
+                        details={
+                            "stuck_seconds": int(age),
+                            "phase": str(task.get("phase") or ""),
+                        },
+                    )
+                    log.warning(
+                        "task %s stuck (%ds) -> interrupted", task_id, int(age)
+                    )
+            else:
+                self.store.request_cancel(task_id)
+                log.warning("task %s stuck (%ds) -> cancel requested", task_id, int(age))
 
     def _schedule(self, task_id: str) -> None:
         future = self._executor.submit(self._run, task_id)
@@ -213,6 +286,19 @@ class PersistentTaskRunner:
             context.checkpoint()
             payload = self.store.materialize_input(task)
             result = handler(payload, context)
+            current = self.store.load(task_id)
+            if current is not None and current.get("status") in {
+                "interrupted",
+                "cancelled",
+            }:
+                # 看门狗/用户已在执行期间终止任务：丢弃本次结果，保留终止状态，
+                # 避免后到完成的 handler 覆盖中断标记（结果不可信）。
+                self.store.transition(
+                    task_id,
+                    updates={"result": result},
+                    event="task_stale_result_discarded",
+                )
+                return
             context.checkpoint()
             self.store.transition(
                 task_id,

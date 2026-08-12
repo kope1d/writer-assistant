@@ -88,6 +88,11 @@ class SourceAnalysisError(RuntimeError):
         self.code = code
 
 
+# 单次来源分析的合理工作上限（与 novel_service.MAX_SOURCE_CHUNKS 保持一致）：
+# 超过说明输入远超单次任务预期，应在入口快速失败而非让 LLM 循环数小时。
+MAX_SOURCE_CHUNKS = 50
+
+
 class SourceAnalysisService:
     """Own V2 source manifests, evidence reports, profiles and proposals."""
 
@@ -143,6 +148,12 @@ class SourceAnalysisService:
         self._atomic_write_text(snapshot_path, text)
         now = self._now()
         ranges = self.split_text(text, budget)
+        if len(ranges) > MAX_SOURCE_CHUNKS:
+            raise SourceAnalysisError(
+                f"来源文本过大（约 {len(ranges)} 块，上限 {MAX_SOURCE_CHUNKS} 块）："
+                "请裁剪来源后重试",
+                code="SOURCE_TOO_LARGE",
+            )
         old_by_sha: dict[str, list[tuple[SourceChunkRecordV2, SourceChunkReportV2]]] = (
             self._reusable_reports(source_id, old_manifest) if old_manifest else {}
         )

@@ -226,3 +226,76 @@ def test_retry_preserves_persisted_continuous_write_progress(tmp_path: Path):
         ]
     finally:
         runner.shutdown(wait=True)
+
+
+def test_watchdog_interrupts_stuck_task_and_discards_stale_result(
+    tmp_path: Path, monkeypatch
+):
+    """看门狗：卡死任务先协作取消，宽限超时后强制中断；handler 后到完成不覆盖。"""
+    init_project(tmp_path, "demo")
+    # 收缩阈值：任何 running 任务都视为卡死（避免真实等待 10 分钟）
+    monkeypatch.setattr("tools.task_runner.STUCK_AFTER_SECONDS", 0)
+    monkeypatch.setattr("tools.task_runner.STUCK_GRACE_SECONDS", 0)
+    block = Event()
+
+    def handler(payload: dict, context: TaskContext) -> dict:
+        del payload
+        context.phase("model", "working")
+        block.wait(30)  # 模拟长时间 LLM 调用，期间无心跳
+        return {"late_result": True}
+
+    runner = PersistentTaskRunner(tmp_path, "demo", handlers={"chapter_review": handler})
+    try:
+        task = runner.submit("chapter_review", {"chapter_id": "ch_001"})
+        running = _wait_for(runner.store, task["task_id"], "running")
+
+        # 第一次 tick：无取消标记 → 协作请求取消，任务仍 running
+        runner._watchdog_tick()
+        after_first = runner.store.load(task["task_id"])
+        assert after_first["cancel_requested"] is True
+        assert after_first["status"] == "running"
+
+        # 第二次 tick：取消已请求且宽限超时 → 强制中断
+        runner._watchdog_tick()
+        interrupted = _wait_for(runner.store, task["task_id"], "interrupted")
+        assert interrupted["error"]["code"] == "STUCK_TIMEOUT"
+
+        # handler 最终返回：结果被丢弃，中断状态不被覆盖
+        block.set()
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            current = runner.store.load(task["task_id"])
+            if current is not None and current.get("result", {}).get("late_result"):
+                break
+            time.sleep(0.01)
+        final = runner.store.load(task["task_id"])
+        assert final["status"] == "interrupted"
+        assert final["error"]["code"] == "STUCK_TIMEOUT"
+        assert final["result"].get("late_result") is True  # 结果只挂载、不改状态
+    finally:
+        block.set()
+        runner.shutdown(wait=True)
+
+
+def test_watchdog_leaves_healthy_running_task_untouched(tmp_path: Path):
+    """看门狗：有心跳的正常 running 任务不受影响。"""
+    init_project(tmp_path, "demo")
+    release = Event()
+
+    def handler(payload: dict, context: TaskContext) -> dict:
+        del payload
+        context.phase("model", "working")
+        release.wait(10)
+        return {"ok": True}
+
+    runner = PersistentTaskRunner(tmp_path, "demo", handlers={"chapter_review": handler})
+    try:
+        task = runner.submit("chapter_review", {"chapter_id": "ch_001"})
+        running = _wait_for(runner.store, task["task_id"], "running")
+        runner._watchdog_tick()  # 默认阈值 600s，刚启动的任务远未卡死
+        after = runner.store.load(task["task_id"])
+        assert after["status"] == "running"
+        assert after.get("cancel_requested") is False
+    finally:
+        release.set()
+        runner.shutdown(wait=True)

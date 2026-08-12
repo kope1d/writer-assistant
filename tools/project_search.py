@@ -893,8 +893,16 @@ class ProjectSearchIndex:
                 "LightRAG 索引正在由另一任务更新；本次已使用精确文本搜索"
             )
             warning_code = "LIGHTRAG_INDEX_BUSY"
-        except Exception:
-            logger.warning("LightRAG project search failed", exc_info=True)
+        except Exception as exc:
+            if time.monotonic() < _embedding_failed_until():
+                # 电路打开（embedding 失败窗口）内的重复失败：只记一行摘要，
+                # 避免每次检索都刷完整 traceback（曾 19 条/30 分钟刷屏）。
+                logger.debug(
+                    "LightRAG project search failed (circuit open, retry in %.0fs)",
+                    max(0.0, _embedding_failed_until() - time.monotonic()),
+                )
+            else:
+                logger.warning("LightRAG project search failed", exc_info=True)
             backend_result = BackendSearchResult(chunks=[])
             warning = "LightRAG 索引或检索失败；本次已使用精确文本搜索"
             warning_code = "LIGHTRAG_SEARCH_FAILED"
