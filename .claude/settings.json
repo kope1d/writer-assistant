@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh release upload:*)",
+      "Bash(gh release view:*)",
+      "Bash(gh release list:*)",
+      "Bash(gh release download:*)",
+      "Bash(gh api -X PATCH repos/kope1d/writer-assistant:*)",
+      "Bash(gh api -X DELETE repos/kope1d/writer-assistant:*)",
+      "Bash(GH_TOKEN=$(gh auth token) npx electron-builder:*)"
+    ]
+  }
+}

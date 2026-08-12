@@ -1,7 +1,7 @@
 {
   "name": "writer-assistant-desktop",
   "productName": "Writer Assistant",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Writer Assistant 独立桌面客户端",
   "main": "electron/main.js",
   "private": true,
