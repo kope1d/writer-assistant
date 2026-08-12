@@ -29,6 +29,8 @@ def _isolated_studio_configuration(tmp_path: Path, monkeypatch):
     empty_prefs = tmp_path / "empty-studio-preferences"
     empty_prefs.mkdir()
     monkeypatch.setenv("OPENWRITE_STUDIO_CONFIG_DIR", str(empty_prefs))
+    # 写操作凭证：测试统一注入固定 token，写请求头携带同名值。
+    monkeypatch.setenv("OPENWRITE_STUDIO_TOKEN", "test-write-token")
     snapshot = dict(os.environ)
     for key in [
         key for key in os.environ if key.startswith(LEAKY_ENV_PREFIXES)

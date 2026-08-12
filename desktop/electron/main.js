@@ -10,6 +10,9 @@ const { autoUpdater } = require("electron-updater");
 const ROOT = path.resolve(__dirname, "..", "..");
 const DEFAULT_PORT = 4567;
 
+// ─── 写操作随机凭证（每次启动重新生成，经 env 注入 backend、经 IPC 注入页面）──
+const WRITE_TOKEN = require("crypto").randomBytes(32).toString("hex");
+
 // ─── JSONL 桌面日志（对齐 CLI/Studio 的 diagnostic_logging.py）───────────────
 const LOG_DIR = path.join(ROOT, ".openwrite", "logs");
 const LOG_FILE = path.join(LOG_DIR, "desktop.jsonl");
@@ -187,6 +190,7 @@ function startBackend() {
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
       OPENWRITE_FASTEMBED_CACHE_DIR: path.join(ROOT, ".fastembed-cache"),
+      OPENWRITE_STUDIO_TOKEN: WRITE_TOKEN,
       HF_ENDPOINT: "https://hf-mirror.com",
     },
   });
@@ -254,7 +258,20 @@ function createTray() {
 
 // ─── 应用启动 ───────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  ipcMain.handle("get-write-token", () => WRITE_TOKEN);
   desktopLog("INFO", "app_ready", { version: app.getVersion(), platform: process.platform });
+
+  // 启动自检：embedding 模型缓存缺失时预警（语义搜索开箱即坏）
+  const cacheDir = path.join(ROOT, ".fastembed-cache");
+  const modelOnnx = path.join(
+    cacheDir, "fast-bge-small-zh-v1.5", "model_optimized.onnx"
+  );
+  if (!fs.existsSync(modelOnnx)) {
+    desktopLog(
+      "WARNING", "embedding_cache_missing",
+      { cacheDir, hint: "语义搜索将不可用；重新安装或按 packaging/prepare-release.ps1 指引下载模型" }
+    );
+  }
 
   backend = startBackend();
   const url = `http://127.0.0.1:${DEFAULT_PORT}/`;

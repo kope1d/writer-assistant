@@ -20,7 +20,7 @@ def _post(opener, url: str, payload: dict) -> dict:
         url,
         method="POST",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+        headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
     )
     with opener.open(request) as response:
         return json.loads(response.read())

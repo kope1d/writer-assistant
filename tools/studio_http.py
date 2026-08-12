@@ -17,12 +17,13 @@ from tools.studio_contracts import (
     MAX_DOCUMENT_BYTES,
     MAX_TASK_REQUEST_BYTES,
     STATIC_ROOT,
-    WRITE_HEADER,
+    WRITE_TOKEN_HEADER,
     StudioError,
     internal_error_payload,
     new_request_id,
     studio_error_payload,
     studio_success_payload,
+    write_token,
 )
 
 
@@ -499,7 +500,7 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
         return payload
 
     def _require_write_header(self) -> None:
-        if self.headers.get(WRITE_HEADER) != "1":
+        if self.headers.get(WRITE_TOKEN_HEADER) != write_token():
             raise StudioError(
                 "缺少 Studio 写入凭证",
                 HTTPStatus.FORBIDDEN,

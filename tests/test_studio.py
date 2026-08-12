@@ -1519,7 +1519,7 @@ def test_studio_http_serves_ui_api_and_blocks_unsigned_writes(tmp_path: Path):
             f"{base}/api/agent/session",
             method="POST",
             data=json.dumps({"agent": "goethe"}).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         with opener.open(new_session_request) as response:
             new_session = json.loads(response.read())
@@ -1537,7 +1537,7 @@ def test_studio_http_serves_ui_api_and_blocks_unsigned_writes(tmp_path: Path):
                     "session_id": new_session["active_session_id"],
                 }
             ).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         with opener.open(delete_session_request) as response:
             deleted_session = json.loads(response.read())
@@ -1575,7 +1575,7 @@ def test_studio_http_serves_ui_api_and_blocks_unsigned_writes(tmp_path: Path):
                     "revision": outline["revision"],
                 }
             ).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         with opener.open(outline_edit) as response:
             edited_outline = json.loads(response.read())
@@ -1595,7 +1595,7 @@ def test_studio_http_serves_ui_api_and_blocks_unsigned_writes(tmp_path: Path):
             ).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "X-OpenWrite-Studio": "1",
+                "X-OpenWrite-Token": "test-write-token",
             },
         )
         with opener.open(save_request) as response:
@@ -1925,7 +1925,7 @@ def test_studio_http_exposes_context_and_import_routes(tmp_path: Path):
                     "arc_id": "arc_001",
                 }
             ).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         with opener.open(request) as response:
             payload = json.loads(response.read())
@@ -2012,7 +2012,7 @@ def test_studio_http_can_initialize_an_empty_workspace(tmp_path: Path):
             f"{base}/api/project/init",
             method="POST",
             data=json.dumps({"novel_id": "web_novel", "title": "前端新书"}).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         with opener.open(request) as response:
             payload = json.loads(response.read())
@@ -2057,7 +2057,7 @@ def test_studio_revision_api_uses_envelope_and_dynamic_apply_route(tmp_path: Pat
             f"{base}{path}",
             method="POST",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         with opener.open(request) as response:
             return json.loads(response.read()), response.headers["X-Request-ID"]
@@ -2116,7 +2116,7 @@ def test_studio_revision_api_returns_document_conflict_details(tmp_path: Path):
                     data=json.dumps(payload).encode("utf-8"),
                     headers={
                         "Content-Type": "application/json",
-                        "X-OpenWrite-Studio": "1",
+                        "X-OpenWrite-Token": "test-write-token",
                     },
                 )
             ).read()
@@ -2433,7 +2433,7 @@ def test_studio_serves_project_landing_and_switches(tmp_path: Path):
         request = Request(
             f"{base}/api/project/open",
             data=json.dumps({"project_path": str(project_b)}).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         opened = json.loads(opener.open(request).read().decode("utf-8"))
         assert opened["initialized"] is True

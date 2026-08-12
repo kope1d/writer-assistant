@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import secrets
 import uuid
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 STATIC_ROOT = Path(__file__).parent / "studio_assets"
 REQUIRED_STATIC_ASSETS = (
@@ -20,6 +25,28 @@ MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_ASSET_PACKAGE_REQUEST_BYTES = 35 * 1024 * 1024
 MAX_TASK_REQUEST_BYTES = 64 * 1024 * 1024
 WRITE_HEADER = "X-OpenWrite-Studio"
+WRITE_TOKEN_HEADER = "X-OpenWrite-Token"
+_WRITE_TOKEN_CACHE: str | None = None
+
+
+def write_token() -> str:
+    """写操作随机凭证（会话级稳定）。
+
+    优先读环境变量 OPENWRITE_STUDIO_TOKEN（Electron 壳启动 backend 时注入，
+    每次启动重新生成）；未设置时生成会话级随机值——此时前端无法通过写校验，
+    仅适用于带 token 的脚本/CLI 场景。
+    """
+    global _WRITE_TOKEN_CACHE
+    if _WRITE_TOKEN_CACHE is None:
+        token = os.environ.get("OPENWRITE_STUDIO_TOKEN", "").strip()
+        if not token:
+            token = secrets.token_hex(32)
+            _log.warning(
+                "OPENWRITE_STUDIO_TOKEN 未设置：已生成会话级写凭证，"
+                "前端写操作将无法通过校验（桌面端会自动注入，可忽略）"
+            )
+        _WRITE_TOKEN_CACHE = token
+    return _WRITE_TOKEN_CACHE
 
 
 def missing_required_static_assets(root: Path = STATIC_ROOT) -> list[str]:

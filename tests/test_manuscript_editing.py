@@ -252,7 +252,7 @@ def test_manuscript_editing_http_api_round_trip(tmp_path: Path) -> None:
         data=json.dumps(
             {"action": "checkpoint", "chapter_id": "ch_001", "label": "HTTP"}
         ).encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+        headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
     )
     try:
         with opener.open(request) as response:

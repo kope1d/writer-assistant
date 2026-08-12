@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   isDesktop: true,
+  getWriteToken: () => ipcRenderer.invoke("get-write-token"),
   minimize: () => ipcRenderer.send("window-minimize"),
   toggleMaximize: () => ipcRenderer.send("window-maximize-toggle"),
   close: () => ipcRenderer.send("window-close"),

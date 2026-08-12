@@ -274,7 +274,7 @@ def test_studio_task_http_api_persists_across_refresh(tmp_path: Path):
                     "input": {"chapter_id": "ch_001", "target_words": 800},
                 }
             ).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-OpenWrite-Studio": "1"},
+            headers={"Content-Type": "application/json", "X-OpenWrite-Token": "test-write-token"},
         )
         with opener.open(request) as response:
             created = json.loads(response.read())

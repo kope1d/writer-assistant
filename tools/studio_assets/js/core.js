@@ -142,7 +142,10 @@ export async function api(path, options = {}) {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
   if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";
-    headers["X-OpenWrite-Studio"] = "1";
+    const token = window.desktopBridge?.getWriteToken
+      ? await window.desktopBridge.getWriteToken()
+      : "";
+    if (token) headers["X-OpenWrite-Token"] = token;
   }
   const response = await fetch(path, { ...options, headers });
   const contentType = response.headers.get("Content-Type") || "";
