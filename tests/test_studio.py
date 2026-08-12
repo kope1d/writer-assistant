@@ -417,9 +417,11 @@ def test_studio_init_accepts_demo_short_template(tmp_path: Path, monkeypatch: py
 
 def test_studio_delete_project_removes_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
+    registry = ProjectRegistry(tmp_path / "registry.yaml", allow_ephemeral=True)
     app = StudioApplication(
         tmp_path,
         model_settings_store=StudioModelSettingsStore(tmp_path / "prefs"),
+        project_registry=registry,
     )
     app.initialize_project(
         {
@@ -430,12 +432,42 @@ def test_studio_delete_project_removes_directory(tmp_path: Path, monkeypatch: py
         }
     )
     assert (tmp_path / "doomed_novel" / "novel_config.yaml").exists()
+    # 打开即注册（_activate_project → remember），删除因此放行
+    assert str((tmp_path / "doomed_novel").resolve()) in {
+        str(Path(record["path"]).resolve()) for record in registry.list()
+    }
 
     with pytest.raises(StudioError, match="确认"):
         app.delete_project({"project_path": str(tmp_path / "doomed_novel"), "confirm": "wrong"})
 
     app.delete_project({"project_path": str(tmp_path / "doomed_novel"), "confirm": "doomed"})
     assert not (tmp_path / "doomed_novel").exists()
+
+
+def test_studio_delete_project_rejects_unregistered_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """加固锚点：未注册的'形似项目'目录不得被 delete_project 删除（403）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    registry = ProjectRegistry(tmp_path / "registry.yaml", allow_ephemeral=True)
+    app = StudioApplication(
+        tmp_path,
+        model_settings_store=StudioModelSettingsStore(tmp_path / "prefs"),
+        project_registry=registry,
+    )
+    app.initialize_project(
+        {
+            "project_path": str(tmp_path / "active_novel"),
+            "novel_id": "active",
+            "title": "激活之书",
+            "template": "default",
+        }
+    )
+    # 伪造一个从未打开过的"形似项目"目录（含 novel_config.yaml，novel_id 匹配确认）
+    rogue = tmp_path / "rogue_novel"
+    init_project(rogue, "rogue", title="伪装项目")
+    with pytest.raises(StudioError) as exc:
+        app.delete_project({"project_path": str(rogue), "confirm": "rogue"})
+    assert exc.value.status == HTTPStatus.FORBIDDEN
+    assert rogue.exists()  # 目录未被删除
 
 
 def test_relationship_topology_includes_search_and_context_controls():
@@ -2168,6 +2200,14 @@ def test_studio_serves_materials_aggregated_by_kind(tmp_path: Path):
 
 def test_studio_materials_supports_cross_project_query(tmp_path: Path):
     """素材板跨项目只读浏览：?project= 聚合目标项目素材，不切换激活项目。"""
+
+    def registry_for(*roots: Path) -> ProjectRegistry:
+        """构造隔离注册表并登记目标项目（注册表校验要求目标已打开过）。"""
+        registry = ProjectRegistry(tmp_path / "materials-registry.yaml", allow_ephemeral=True)
+        for root in roots:
+            registry.remember(root)
+        return registry
+
     proj_a = tmp_path / "proj_a"
     proj_b = tmp_path / "proj_b"
     init_project(proj_a, "alpha")
@@ -2179,7 +2219,7 @@ def test_studio_materials_supports_cross_project_query(tmp_path: Path):
     world_b.mkdir(parents=True, exist_ok=True)
     (world_b / "beta_world.md").write_text("# 乙世界\n\n第二本的设定。\n", encoding="utf-8")
 
-    server = create_server(proj_a, port=0)
+    server = create_server(proj_a, port=0, project_registry=registry_for(proj_a, proj_b))
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_port}"

@@ -748,6 +748,7 @@ class StudioApplication:
                 f"删除确认不匹配（预期: {novel_id}）",
                 HTTPStatus.PRECONDITION_REQUIRED,
             )
+        self._assert_registered_project(target)
         import shutil
 
         with self._write_lock:
@@ -758,6 +759,19 @@ class StudioApplication:
             self._deactivate_project()
         self._debug_event("project_delete_completed", target=str(target))
         return self.workspace()
+
+    def _assert_registered_project(self, target: Path) -> None:
+        """删除/跨项目读取前校验目标在项目注册表内，拒绝操作未注册的任意路径。
+
+        激活项目打开时已自动 remember（见 _activate_project），因此正常流程
+        下的项目必然在注册表内；此校验只拦截"形似项目"的任意目录。
+        """
+        registry = self._project_registry or ProjectRegistry()
+        known = {str(Path(record["path"]).resolve()) for record in registry.list()}
+        if str(target) not in known:
+            raise StudioError(
+                "目标项目不在项目注册表中，拒绝操作", HTTPStatus.FORBIDDEN
+            )
 
     def _require_no_active_tasks(self) -> None:
         if self._task_runner is None:
@@ -1230,6 +1244,7 @@ class StudioApplication:
             target_root, target_novel_id, target_title = self._resolve_material_project(
                 Path(project_path)
             )
+            self._assert_registered_project(Path(project_path))
         elif not self.initialized:
             return {"materials": []}
         else:

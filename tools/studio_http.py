@@ -204,6 +204,7 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
                     raise StudioError(
                         "历史消息数量必须是整数", code="INVALID_HISTORY_LIMIT"
                     ) from exc
+                limit = min(max(limit, 1), 500)
                 self._json(self.app.agent_surface(agent_name, limit, session_id))
                 return
             if parsed.path == "/api/agent/activity":
@@ -228,6 +229,7 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
                     limit = int(params.get("limit", ["20"])[0])
                 except ValueError as exc:
                     raise StudioError("搜索数量必须是整数", code="INVALID_SEARCH_LIMIT") from exc
+                limit = min(max(limit, 1), 500)
                 self._json(self.app.search_project(query, scope, limit))
                 return
             if parsed.path == "/api/document":
