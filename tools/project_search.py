@@ -1432,11 +1432,12 @@ class _IndexUpdateLock:
             return True
         try:
             os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
         except PermissionError:
-            return False
-        return False
+            return False  # 进程存在但无权限，视为活跃
+        except OSError:
+            # 进程不存在：POSIX 抛 ProcessLookupError，Windows 抛 OSError[WinError 87]
+            return True
+        return False  # 进程存活
 
 
 def _bounded_env_int(
