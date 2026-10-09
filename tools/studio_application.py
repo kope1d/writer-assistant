@@ -4440,10 +4440,25 @@ def run_studio(
     print("按 Ctrl+C 停止")
     if open_browser:
         webbrowser.open(url)
+    started = time.monotonic()
+    # 关停原因必须留痕：serve_forever() 只有两种返回方式——被其它线程
+    # shutdown()，或主线程收到 KeyboardInterrupt（控制台控制事件）。
+    # 打包版曾两次在毫无错误日志的情况下以 code 0 退出，用户日志里只留下
+    # 一条 backend_exited，查不出原因；所以把原因、pid、存活时长一起记下。
+    reason = "unknown"
     try:
         server.serve_forever()
+        reason = "serve_forever_returned"
     except KeyboardInterrupt:
+        reason = "keyboard_interrupt"
         print("\nStudio 已停止")
     finally:
         server.server_close()
+        logger.warning(
+            "Studio 退出: reason=%s pid=%s port=%s uptime=%.1fs",
+            reason,
+            os.getpid(),
+            server.server_port,
+            time.monotonic() - started,
+        )
     return 0

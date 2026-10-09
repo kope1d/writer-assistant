@@ -6,6 +6,15 @@ let openTaskResult = async () => {};
 let pollTimer = null;
 let refreshing = false;
 
+// 轮询节奏：任务中心曾经固定 2.5s 无条件拉一次 /api/tasks?limit=100，
+// 即使没任务在跑、面板也没打开也照拉（实测 7 分钟约 170 次）。改成分档：
+// 有任务在跑或面板打开时才需要秒级跟进，空闲时降为低频兜底。
+const TASK_ACTIVE_STATUSES = new Set(["queued", "pending", "running"]);
+const TASK_POLL_ACTIVE_MS = 2500;
+// 空闲兜底轮询：本地单用户场景没有任务会凭空出现，低频只为照看
+// 多端/多窗口同时打开的极端情况。
+const TASK_POLL_IDLE_MS = 15000;
+
 export function bindTaskCenter(callbacks = {}) {
   refreshWorkspace = callbacks.refreshWorkspace || refreshWorkspace;
   openTaskResult = callbacks.openTaskResult || openTaskResult;
@@ -20,7 +29,27 @@ export function bindTaskCenter(callbacks = {}) {
   $("#controlled-write-close").addEventListener("click", () => $("#controlled-write-dialog").close());
   $("#controlled-write-cancel").addEventListener("click", () => $("#controlled-write-dialog").close());
   $("#controlled-write-form").addEventListener("submit", submitControlledWrite);
-  if (!pollTimer) pollTimer = window.setInterval(refreshTasks, 2500);
+  if (!pollTimer) scheduleNextPoll();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshTasks();
+  });
+}
+
+function nextPollDelay() {
+  if ((state.tasks || []).some((task) => TASK_ACTIVE_STATUSES.has(task.status))) {
+    return TASK_POLL_ACTIVE_MS;
+  }
+  if ($("#task-center-dialog")?.open) return TASK_POLL_ACTIVE_MS;
+  return TASK_POLL_IDLE_MS;
+}
+
+function scheduleNextPoll() {
+  window.clearTimeout(pollTimer);
+  pollTimer = null;
+  // 页面不可见时不轮询，重新可见时由 visibilitychange 恢复：
+  // 本地工作台没有需要后台即时感知的变更，隐藏页面里空转只是白耗电。
+  if (document.hidden) return;
+  pollTimer = window.setTimeout(() => { refreshTasks(); }, nextPollDelay());
 }
 
 export async function enqueueTask(type, input, options = {}) {
@@ -42,10 +71,14 @@ export function openTaskCenter() {
   const dialog = $("#task-center-dialog");
   if (!dialog.open) dialog.showModal();
   refreshTasks();
+  scheduleNextPoll();  // 面板打开期间切快档
 }
 
 export async function refreshTasks() {
-  if (refreshing || !state.workspace?.initialized) return;
+  if (refreshing || !state.workspace?.initialized) {
+    scheduleNextPoll();
+    return;
+  }
   refreshing = true;
   try {
     const payload = await api("/api/tasks?limit=100");
@@ -58,6 +91,7 @@ export async function refreshTasks() {
     if ($("#task-center-dialog")?.open) $("#task-list").textContent = error.message;
   } finally {
     refreshing = false;
+    scheduleNextPoll();
   }
 }
 

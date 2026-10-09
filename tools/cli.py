@@ -1880,11 +1880,45 @@ def _run_repl(args, input_fn=None) -> int:
     return 0
 
 
+def _windows_console_stdin_available() -> bool:
+    """判断 stdin 是否真的连着一个可用控制台。
+
+    不能用 `sys.stdin.isatty()`：在 mintty（Git Bash）里 NUL 被当成字符设备，
+    `writer repl < /dev/null` 的 isatty() 照样返回 True，于是代码走 msvcrt 原始
+    读取，`getwch()` 在没有控制台输入时永久阻塞（实测挂到超时）。
+    另外 stdin 被关闭时 `sys.stdin` 会是 None，连 `.isatty()` 都调不了。
+    GetConsoleMode 对非控制台句柄一定失败，才是可靠判据。
+    """
+    if sys.stdin is None:
+        return False
+    try:
+        import ctypes
+        import msvcrt
+    except ImportError:  # pragma: no cover - Windows 上不会发生
+        return False
+    try:
+        handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+    except (OSError, ValueError, AttributeError):
+        return False
+    mode = ctypes.c_ulong()
+    try:
+        return bool(
+            ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        )
+    except OSError:  # pragma: no cover - 句柄异常时保守退回 input()
+        return False
+
+
 def _repl_input(prompt: str, history: list[str]) -> str:
     """读取一行输入。POSIX 走 readline（自带历史），Windows 用 msvcrt 轻量行编辑。
 
     Windows 下支持：左右键移动光标、Home/End、Backspace/Del、上下键浏览历史。
     """
+    # stdin/stdout 被关闭时 input() 只会抛 RuntimeError（"lost sys.stdin"），
+    # 这里统一当 EOF 处理，让 REPL 干净退出而不是崩栈或挂死。
+    if sys.stdin is None or sys.stdout is None:
+        raise EOFError
+
     if os.name != "nt":
         try:
             import readline  # noqa: F401 — 启用行编辑与历史
@@ -1892,8 +1926,8 @@ def _repl_input(prompt: str, history: list[str]) -> str:
             pass
         return input(prompt)
 
-    # msvcrt 只读控制台输入缓冲区，重定向/管道下必须退回 input()
-    if not sys.stdin.isatty():
+    # msvcrt 只在真正有控制台时可用；重定向/管道/NUL 下必须退回 input()
+    if not _windows_console_stdin_available():
         return input(prompt)
 
     import msvcrt  # type: ignore[import-not-found]
