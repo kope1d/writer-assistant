@@ -103,6 +103,9 @@ data/novels/*/data/test_outputs/
 .pytest-*/
 pytest-*.log
 
+# E2E mock LLM 请求日志（tests/e2e/README.md 建议忽略）
+tests/e2e/logs/
+
 # Packaging outputs
 build/
 desktop/backend-dist/
