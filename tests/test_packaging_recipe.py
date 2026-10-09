@@ -114,6 +114,41 @@ def test_configure_tiktoken_cache_prefers_bundled_dir(
     assert os.environ["TIKTOKEN_CACHE_DIR"] == str(bundled)
 
 
+def test_disable_pipmaster_runtime_installs_only_when_frozen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """冻结包里必须短路 pipmaster，否则后端会把自己当 pip 再拉一份。
+
+    lightrag/llm/openai.py 顶层：`if not pm.is_installed("openai"): pm.install("openai")`。
+    冻结包里没有 dist-info，is_installed() 恒为 False，于是会执行
+    `sys.executable -m pip install --upgrade openai` —— sys.executable 就是
+    writer-backend.exe 自己（argparse 报错退出 2）。
+    """
+    import pipmaster
+
+    entry = _load_backend_entry()
+    originals = {
+        name: getattr(pipmaster, name)
+        for name in ("install", "install_if_missing", "install_or_update")
+    }
+    try:
+        # 开发态（未冻结）：venv 里装包是合理行为，不能拦
+        monkeypatch.delattr(entry.sys, "frozen", raising=False)
+        entry._disable_pipmaster_runtime_installs()
+        assert pipmaster.install is originals["install"]
+
+        # 冻结态：install 变成短路的 no-op，返回 False（即「没装成」）
+        monkeypatch.setattr(entry.sys, "frozen", True, raising=False)
+        entry._disable_pipmaster_runtime_installs()
+        assert pipmaster.install is not originals["install"]
+        assert pipmaster.install("openai") is False
+        assert pipmaster.install_if_missing("openai") is False
+    finally:
+        # pipmaster 是进程级模块，必须还原，否则污染同进程后续用例
+        for name, func in originals.items():
+            setattr(pipmaster, name, func)
+
+
 def test_release_check_validates_both_local_caches() -> None:
     """发布校验脚本要同时盯住 fastembed 模型与 tiktoken 词表。"""
     script = RELEASE_CHECK_PATH.read_text(encoding="utf-8-sig")

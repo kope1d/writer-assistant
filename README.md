@@ -9,10 +9,10 @@
 <h1 align="center">Writer Assistant<br><sub>个人 AI 长篇小说创作工作台</sub></h1>
 
 <p align="center">
-  <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-0.2.3-2563eb" alt="Version 0.2.3"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-0.2.4-2563eb" alt="Version 0.2.4"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-%E2%89%A53.10-22c55e?logo=python&logoColor=white" alt="Python >= 3.10"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0f766e" alt="Apache-2.0 License"></a>
-  <a href="tests/"><img src="https://img.shields.io/badge/tests-999%20passed-22c55e" alt="999 tests passing"></a>
+  <a href="tests/"><img src="https://img.shields.io/badge/tests-1000%20passed-22c55e" alt="1000 tests passing"></a>
 </p>
 
 <p align="center">
