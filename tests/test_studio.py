@@ -31,6 +31,7 @@ from tools.studio_contracts import StudioError as ContractStudioError
 from tools.studio_contracts import studio_error_payload
 from tools.studio_http import POST_ROUTE_PATTERNS, POST_ROUTES, resolve_post_route
 from tools.studio_preferences import StudioModelSettingsStore
+from tools.version import __version__
 from tools.workflow_scheduler import WorkflowScheduler
 
 
@@ -1610,7 +1611,7 @@ def test_studio_http_serves_ui_api_and_blocks_unsigned_writes(tmp_path: Path):
 def test_studio_sync_create_import_and_context_preview(tmp_path: Path):
     init_project(tmp_path, "demo", "雾城来信")
     app = StudioApplication(tmp_path)
-    assert app.workspace()["version"] == "0.2.2"
+    assert app.workspace()["version"] == __version__
 
     character = app.create_document(
         {"kind": "character", "name": "林岑", "description": "在雨夜追查旧信的记者。"}

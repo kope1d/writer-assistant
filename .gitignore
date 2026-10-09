@@ -29,6 +29,9 @@ wheels/
 # PyInstaller
 *.manifest
 *.spec
+# 例外：后端打包配方是发布流程的一部分，必须入库才能被评审和测试覆盖。
+# 被 *.spec 静默吞掉过一次，结果 tiktoken 插件丢失没人发现。
+!writer-backend.spec
 
 # Installer logs
 pip-log.txt
@@ -107,6 +110,9 @@ desktop/release/
 
 # Local embedding model cache
 .fastembed-cache/
+
+# Local tiktoken BPE cache (o200k_base + cl100k_base, ~5MB)
+.tiktoken-cache/
 
 # Local worktrees
 .worktrees/

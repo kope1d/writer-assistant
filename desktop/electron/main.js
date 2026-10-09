@@ -261,7 +261,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("get-write-token", () => WRITE_TOKEN);
   desktopLog("INFO", "app_ready", { version: app.getVersion(), platform: process.platform });
 
-  // 启动自检：embedding 模型缓存缺失时预警（语义搜索开箱即坏）
+  // 启动自检：语义搜索的两处离线依赖，缺失时预警（都会开箱即坏，且都踩过）
   const cacheDir = path.join(ROOT, ".fastembed-cache");
   const modelOnnx = path.join(
     cacheDir, "fast-bge-small-zh-v1.5", "model_optimized.onnx"
@@ -270,6 +270,19 @@ app.whenReady().then(async () => {
     desktopLog(
       "WARNING", "embedding_cache_missing",
       { cacheDir, hint: "语义搜索将不可用；重新安装或按 packaging/prepare-release.ps1 指引下载模型" }
+    );
+  }
+
+  // tiktoken 词表：打包态在 backend/writer-backend/_internal/tiktoken-cache，
+  // 开发态在仓库根的 .tiktoken-cache。缺失则每次检索都要联网现下 3.6MB
+  // （实测 46s > 检索超时上限 45s），国内网络直接不可达。
+  const tiktokenCacheDir = app.isPackaged
+    ? path.join(process.resourcesPath, "backend", "writer-backend", "_internal", "tiktoken-cache")
+    : path.join(ROOT, ".tiktoken-cache");
+  if (!fs.existsSync(path.join(tiktokenCacheDir, "fb374d419588a4632f3f557e76b4b70aebbca790"))) {
+    desktopLog(
+      "WARNING", "tiktoken_cache_missing",
+      { cacheDir: tiktokenCacheDir, hint: "语义检索会因词表缺失超时降级；按 packaging/prepare-release.ps1 指引补齐后重新打包" }
     );
   }
 
